@@ -12,17 +12,20 @@ router.get("/capabilities", (_req, res) => {
 // GET /api/assistant/stats
 router.get("/stats", (req, res) => {
   const sessionId = (req.query.sessionId as string) || "default";
-  const total = (stmts.countBySession.get({ sessionId }) as { total: number }).total;
-  const intentRows = stmts.getIntentStats.all({ sessionId }) as Array<{ intent: string; count: number }>;
+  const total = (stmts.countBySession.get(sessionId) as { total: number }).total;
+  const intentRows = stmts.getIntentStats.all(sessionId) as Array<{ intent: string; count: number }>;
 
   const intentBreakdown: Record<string, number> = {};
   for (const row of intentRows) intentBreakdown[row.intent] = row.count;
 
-  const topIntent = intentRows[0]?.intent ?? null;
-  const userMessages = Math.ceil(total / 2);
-  const assistantMessages = Math.floor(total / 2);
-
-  res.json({ totalMessages: total, userMessages, assistantMessages, intentBreakdown, sessionId, topIntent });
+  res.json({
+    totalMessages:    total,
+    userMessages:     Math.ceil(total / 2),
+    assistantMessages: Math.floor(total / 2),
+    intentBreakdown,
+    sessionId,
+    topIntent: intentRows[0]?.intent ?? null,
+  });
 });
 
 export default router;

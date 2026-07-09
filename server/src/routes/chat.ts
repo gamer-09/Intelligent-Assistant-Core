@@ -1,9 +1,20 @@
 import { Router } from "express";
-import { db, stmts } from "../db/index.js";
+import { db, stmts, type ConversationRow } from "../db/index.js";
 import { detectIntent } from "../nlp/intent-detector.js";
 import { generateResponse, clearSession } from "../nlp/response-generator.js";
 
 const router = Router();
+
+function rowToMessage(row: ConversationRow) {
+  return {
+    id: row.id,
+    role: row.role,
+    text: row.text,
+    timestamp: row.created_at,
+    intent: row.intent,
+    confidence: row.confidence,
+  };
+}
 
 // POST /api/chat/message
 router.post("/message", (req, res) => {
@@ -17,20 +28,21 @@ router.post("/message", (req, res) => {
   const detected = detectIntent(trimmed);
   const responseText = generateResponse(trimmed, detected, sessionId);
 
-  const now = new Date().toISOString();
+  stmts.insertMessage.run(sessionId, "user", trimmed, detected.intent, detected.confidence);
+  const userId = (stmts.lastInsertId.get() as { id: number }).id;
 
-  stmts.insertMessage.run({ sessionId, role: "user", text: trimmed, intent: detected.intent, confidence: detected.confidence });
-  const userRow = db.prepare("SELECT * FROM conversations WHERE rowid = last_insert_rowid()").get() as { id: number; created_at: string };
+  stmts.insertMessage.run(sessionId, "assistant", responseText, detected.intent, detected.confidence);
+  const asstId = (stmts.lastInsertId.get() as { id: number }).id;
 
-  stmts.insertMessage.run({ sessionId, role: "assistant", text: responseText, intent: detected.intent, confidence: detected.confidence });
-  const asstRow = db.prepare("SELECT * FROM conversations WHERE rowid = last_insert_rowid()").get() as { id: number; created_at: string };
+  const userRow  = stmts.getById.get(userId)  as ConversationRow;
+  const asstRow  = stmts.getById.get(asstId)  as ConversationRow;
 
   res.json({
-    userMessage:      { id: userRow.id, role: "user",      text: trimmed,       timestamp: userRow.created_at, intent: detected.intent, confidence: detected.confidence },
-    assistantMessage: { id: asstRow.id, role: "assistant", text: responseText,  timestamp: asstRow.created_at, intent: detected.intent, confidence: detected.confidence },
-    intent: detected.intent,
+    userMessage:      rowToMessage(userRow),
+    assistantMessage: rowToMessage(asstRow),
+    intent:     detected.intent,
     confidence: detected.confidence,
-    entities: detected.entities,
+    entities:   detected.entities,
   });
 });
 
@@ -39,20 +51,21 @@ router.get("/history", (req, res) => {
   const sessionId = (req.query.sessionId as string) || "default";
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
 
-  const all = (limit ? stmts.getHistoryLimited.all({ sessionId, limit }) : stmts.getHistory.all({ sessionId })) as Array<{ id: number; role: string; text: string; intent: string | null; confidence: number | null; created_at: string }>;
-  const total = (stmts.countBySession.get({ sessionId }) as { total: number }).total;
+  const rows = (
+    limit
+      ? stmts.getHistoryLimited.all(sessionId, limit)
+      : stmts.getHistory.all(sessionId)
+  ) as ConversationRow[];
 
-  res.json({
-    messages: all.map(m => ({ id: m.id, role: m.role, text: m.text, timestamp: m.created_at, intent: m.intent, confidence: m.confidence })),
-    sessionId,
-    total,
-  });
+  const total = (stmts.countBySession.get(sessionId) as { total: number }).total;
+
+  res.json({ messages: rows.map(rowToMessage), sessionId, total });
 });
 
 // DELETE /api/chat/history
 router.delete("/history", (req, res) => {
   const sessionId = (req.query.sessionId as string) || "default";
-  stmts.deleteBySession.run({ sessionId });
+  stmts.deleteBySession.run(sessionId);
   clearSession(sessionId);
   res.json({ cleared: true, sessionId });
 });
