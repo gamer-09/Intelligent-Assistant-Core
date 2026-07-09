@@ -1,12 +1,28 @@
 import type { DetectedIntent } from "./intent-detector.js";
+import { stmts, type ConversationRow } from "../db/index.js";
+import {
+  teachFact,
+  findFactMatch,
+  learnCorrection,
+  findCorrection,
+  noteResearchGap,
+  normalizeQuery,
+} from "./memory.js";
 
 // Session-scoped in-memory state
 const sessionReminders = new Map<string, string[]>();
 const sessionLists = new Map<string, string[]>();
+const sessionChallenges = new Map<string, { question: string; answer: number }>();
+// Tracks the original question awaiting a correction across a two-turn
+// "that's wrong" -> "actually it's X" exchange, so the correction is
+// applied to the original question rather than the "that's wrong" message.
+const pendingCorrections = new Map<string, { question: string; wrongAnswer?: string }>();
 
 export function clearSession(sessionId: string): void {
   sessionReminders.delete(sessionId);
   sessionLists.delete(sessionId);
+  sessionChallenges.delete(sessionId);
+  pendingCorrections.delete(sessionId);
 }
 
 // ─── Math helpers ─────────────────────────────────────────────────────────────
@@ -153,7 +169,20 @@ export function generateResponse(text: string, detected: DetectedIntent, session
   const nums = entities.numbers as number[] | undefined;
   const [a, b] = nums ?? [];
 
+  // Self-correction check: if this exact question was corrected before,
+  // prefer the taught answer over regenerating (possibly wrong) logic —
+  // this is how the assistant avoids repeating a known mistake.
+  if (intent !== "correct" && intent !== "teach") {
+    const prior = findCorrection(text);
+    if (prior) return prior.correct_answer;
+  }
+
   switch (intent) {
+    case "teach": return handleTeach(entities);
+    case "correct": return handleCorrect(entities, sessionId);
+    case "reasoning": return handleReasoning(text, lower);
+    case "challenge": return handleChallenge(text, lower, sessionId);
+    case "research": return handleResearch(entities, lower);
     case "greeting": return ["Hello! I'm your Intelligent Assistant. What can I help you with?","Hey there! Ready to assist — what's on your mind?","Hi! Type 'what can you do?' to see everything I can help with."][Math.floor(Math.random()*3)];
     case "farewell": return ["Goodbye! Come back anytime.","See you later! I'll be here when you need me.","Take care!"][Math.floor(Math.random()*3)];
     case "joke": return "Here's one:\n\n" + JOKES[Math.floor(Math.random() * JOKES.length)];
@@ -323,11 +352,124 @@ function handleTextAnalysis(text: string, lower: string, entities: Record<string
 }
 
 function handleSmallTalk(lower: string): string {
-  if (/your\s+name|who\s+are\s+you|what\s+are\s+you/i.test(lower)) return "I'm the **Intelligent Assistant Core (IAC)** — a self-contained AI with no external APIs. Every response comes from built-in logic.";
-  if (/are\s+you\s+(?:an?\s+)?(?:ai|bot|robot)/i.test(lower)) return "Yes, I'm an AI — but unlike most, I run entirely on local logic. No cloud, no external APIs, no Ollama.";
+  if (/your\s+name|who\s+are\s+you|what\s+are\s+you/i.test(lower)) return "I'm the **Intelligent Assistant Core (IAC)** — you can also call me **Yang**. I'm a self-contained AI with no external APIs; every response comes from built-in logic that I keep growing.";
+  if (/are\s+you\s+(?:an?\s+)?(?:ai|bot|robot)/i.test(lower)) return "Yes, I'm an AI — Yang, also known as the Intelligent Assistant Core. I run entirely on local logic: no cloud, no external APIs, no Ollama.";
   if (/how\s+are\s+you/i.test(lower)) return "All systems operational! How can I help you?";
-  if (/do\s+you\s+(?:feel|think|dream)/i.test(lower)) return "I don't experience feelings, but I'm designed to reason and respond as helpfully as possible.";
-  return "I'm the Intelligent Assistant Core — fully self-contained. Try asking me to do some math, convert units, or say 'what can you do?' for the full list!";
+  if (/do\s+you\s+(?:feel|think|dream)/i.test(lower)) return "I don't experience feelings, but I'm designed to reason, learn from corrections, and respond as helpfully as possible.";
+  return "I'm Yang — the Intelligent Assistant Core. Fully self-contained, and I get better the more you teach me. Try some math, convert units, teach me a fact, or say 'what can you do?' for the full list!";
+}
+
+// ─── Teach / correct / reason / challenge / research ──────────────────────────
+
+function handleTeach(entities: Record<string, unknown>): string {
+  const key = entities.factKey as string | undefined;
+  const value = entities.factValue as string | undefined;
+  if (!key || !value) {
+    return "Tell me what to remember in the form: **\"Remember that <thing> is <fact>\"** — e.g. \"Remember that my favorite color is blue.\"";
+  }
+  teachFact(key, value);
+  return `✓ Got it — I'll remember that **${key}** is **${value}**. Ask me about it any time and I'll recall it.`;
+}
+
+function handleCorrect(entities: Record<string, unknown>, sessionId: string): string {
+  const correctAnswer = entities.correctAnswer as string | undefined;
+
+  // If a correction is already pending (user said "that's wrong" on a
+  // previous turn without giving the answer yet), target THAT original
+  // question rather than the "that's wrong" message itself.
+  const pending = pendingCorrections.get(sessionId);
+  const priorUser = pending
+    ? { text: pending.question }
+    : (stmts.getLastUserMessage.get(sessionId) as unknown as ConversationRow | undefined);
+  const priorWrongAnswer = pending?.wrongAnswer
+    ?? (stmts.getLastAssistantMessage.get(sessionId) as unknown as ConversationRow | undefined)?.text;
+
+  if (!priorUser) {
+    return "I don't have a previous question from you this session to correct. Ask something first, then correct me if I get it wrong.";
+  }
+
+  if (!correctAnswer) {
+    // No answer given yet — remember the original question so the next
+    // message (the actual correction) can be applied to it.
+    pendingCorrections.set(sessionId, { question: priorUser.text, wrongAnswer: priorWrongAnswer });
+    return "Thanks for flagging that — what's the correct answer? Say it like: **\"Actually, it's <correct answer>\"** and I'll remember it for next time.";
+  }
+
+  pendingCorrections.delete(sessionId);
+  learnCorrection(priorUser.text, correctAnswer, priorWrongAnswer);
+  return `✓ Corrected. Next time you ask **"${priorUser.text}"** I'll answer **"${correctAnswer}"** instead. Thanks for teaching me.`;
+}
+
+function handleReasoning(text: string, lower: string): string {
+  const topicM = lower.match(/^(?:why|how\s+come)\s+(?:is|are|does|do|did)\s+(.+?)(?:\?|$)/i)
+    ?? lower.match(/explain\s+(?:why|how)\s+(.+?)(?:\?|$)/i);
+  const topic = topicM?.[1]?.trim();
+
+  const fact = topic ? findFactMatch(topic) : undefined;
+  if (fact) {
+    return `Step by step:\n1. You taught me that **${fact.key}** is **${fact.value}**.\n2. That's the fact I have on record — I don't invent an explanation beyond what I've been taught or what's in my built-in knowledge.\n3. So: **${fact.key} → ${fact.value}**.`;
+  }
+
+  for (const [key, def] of Object.entries(DEFINITIONS)) {
+    if (topic && topic.includes(key)) {
+      return `Reasoning it through:\n1. The core idea is **${key}**: ${def}\n2. That definition is the "why" behind most follow-on behavior you'll see with it.\n3. If this isn't the angle you meant, tell me more and I can refine — or correct me and I'll remember the better explanation.`;
+    }
+  }
+
+  if (topic) noteResearchGap(topic);
+  return topic
+    ? `I don't have a built-in explanation for **"${topic}"** yet. I've noted it as something to learn — you can teach me with: **"Remember that ${topic} is ..."**`
+    : "Ask me a \"why\" question about something I know (a definition, an invention, a taught fact) and I'll walk through the reasoning step by step.";
+}
+
+function handleChallenge(text: string, lower: string, sessionId: string): string {
+  const pending = sessionChallenges.get(sessionId);
+
+  // Check an answer to a previously posed challenge
+  if (pending) {
+    const guess = text.match(/[-+]?\d*\.?\d+/);
+    if (guess) {
+      const g = parseFloat(guess[0]);
+      sessionChallenges.delete(sessionId);
+      if (g === pending.answer) return `✓ Correct! **${pending.question}** = **${fmt(pending.answer)}**. Want another? Say "challenge me".`;
+      return `Not quite. **${pending.question}** = **${fmt(pending.answer)}** (you said ${fmt(g)}). Say "challenge me" for another.`;
+    }
+  }
+
+  const ops = [
+    () => { const x = 2 + Math.floor(Math.random()*18), y = 2 + Math.floor(Math.random()*18); return { q: `${x} × ${y}`, a: x*y }; },
+    () => { const x = 10 + Math.floor(Math.random()*90); return { q: `Is ${x} prime?`, a: isPrime(x) ? 1 : 0, prime: true, n: x }; },
+    () => { const x = 2 + Math.floor(Math.random()*10); return { q: `${x} factorial`, a: Number(factorial(x)) }; },
+    () => { const x = 20 + Math.floor(Math.random()*180), y = 5 + Math.floor(Math.random()*45); return { q: `${x} - ${y}`, a: x-y }; },
+  ];
+  const picked = ops[Math.floor(Math.random()*ops.length)]();
+  if ("prime" in picked && picked.prime) {
+    sessionChallenges.set(sessionId, { question: picked.q, answer: picked.a });
+    return `Here's a problem: **${picked.q}** (answer 1 for yes, 0 for no)\n\nReply with your answer, and I'll tell you if you're right.`;
+  }
+  sessionChallenges.set(sessionId, { question: picked.q, answer: picked.a });
+  return `Here's a problem: **${picked.q}** = ?\n\nReply with just the number, and I'll check it.`;
+}
+
+function handleResearch(entities: Record<string, unknown>, lower: string): string {
+  const topic = ((entities.topic as string | undefined) ?? "").toLowerCase();
+  if (!topic) return "Tell me a topic to research, e.g. **\"What do you know about France?\"** or **\"Research recursion\"**.";
+
+  const findings: string[] = [];
+  const taught = findFactMatch(topic);
+  if (taught) findings.push(`Taught fact — **${taught.key}**: ${taught.value}`);
+  for (const [c, f] of Object.entries(GEO)) if (c.includes(topic) || topic.includes(c)) findings.push(`Country knowledge: ${f}`);
+  for (const [k, v] of Object.entries(DEFINITIONS)) if (k.includes(topic) || topic.includes(k)) findings.push(`Definition — **${k}**: ${v}`);
+  for (const [k, v] of Object.entries(INVENTIONS)) if (k.includes(topic) || topic.includes(k)) findings.push(`Invention/discovery — **${k}**: ${v}`);
+  const cap = CAPITALS[topic];
+  if (cap) findings.push(`Capital: **${cap}**`);
+
+  if (findings.length > 0) {
+    return `Here's what I've gathered on **"${topic}"**:\n\n${findings.map(f => `• ${f}`).join("\n")}`;
+  }
+
+  noteResearchGap(topic);
+  return `I don't have anything on **"${topic}"** across my knowledge or taught facts yet. I've logged it as a research gap — teach me with **"Remember that ${topic} is ..."** and I'll have it next time.`;
 }
 
 function handleReminder(text: string, entities: Record<string, unknown>, sessionId: string): string {
@@ -358,30 +500,40 @@ function handleList(text: string, lower: string, sessionId: string): string {
 }
 
 function handleDefinition(lower: string): string {
+  const taught = findFactMatch(lower);
+  if (taught) return `**${taught.key}** is **${taught.value}** (you taught me this).`;
+
   for (const [key, def] of Object.entries(DEFINITIONS)) {
     if (lower.includes(key)) return def;
   }
-  return `I have definitions for: ${Object.keys(DEFINITIONS).join(", ")}. Try: **"What is an algorithm?"**`;
+  noteResearchGap(lower.replace(/^(?:what\s+(?:is|does|are|means?)|define|explain)\s+/i,"").trim() || lower);
+  return `I have definitions for: ${Object.keys(DEFINITIONS).join(", ")}. Try: **"What is an algorithm?"** — or teach me one with **"Remember that X is Y"**.`;
 }
 
 function handleKnowledge(lower: string, nums?: number[]): string {
+  const taught = findFactMatch(lower);
+  if (taught) return `**${taught.key}** is **${taught.value}** (you taught me this).`;
+
   for (const [c, f] of Object.entries(GEO)) { if (lower.includes(c)) return f; }
 
   const capM = lower.match(/capital\s+of\s+(\w+(?:\s+\w+)?)/i);
   if (capM) {
     const c = capM[1].toLowerCase();
     const cap = CAPITALS[c];
-    return cap ? `The capital of **${capM[1]}** is **${cap}**.` : `I don't have the capital of "${capM[1]}" — I know: ${Object.keys(CAPITALS).join(", ")}.`;
+    if (cap) return `The capital of **${capM[1]}** is **${cap}**.`;
+    noteResearchGap(`capital of ${c}`);
+    return `I don't have the capital of "${capM[1]}" — I know: ${Object.keys(CAPITALS).join(", ")}. Teach me with **"Remember that the capital of ${capM[1]} is ..."**`;
   }
 
   const invM = lower.match(/who\s+(?:invented|created|discovered|founded)\s+(.+?)(?:\?|$)/i);
   if (invM) {
     const thing = invM[1].trim().toLowerCase();
     for (const [k, v] of Object.entries(INVENTIONS)) { if (thing.includes(k)) return v; }
-    return `I don't have that. For "${invM[1]}", try Wikipedia.`;
+    noteResearchGap(thing);
+    return `I don't have that yet — I've logged "${invM[1]}" to learn. Teach me with **"Remember that ${invM[1]} was invented by ..."**`;
   }
 
-  return "I know about countries, capitals, inventions, and tech definitions. Try: **\"Capital of Japan\"**, **\"Who invented the telephone?\"**, **\"Tell me about France\"**.";
+  return "I know about countries, capitals, inventions, and tech definitions — plus anything you've taught me. Try: **\"Capital of Japan\"**, **\"Who invented the telephone?\"**, **\"Tell me about France\"**.";
 }
 
 function handleNumberFact(nums?: number[]): string {

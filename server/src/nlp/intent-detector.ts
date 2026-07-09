@@ -179,6 +179,61 @@ const INTENT_PATTERNS: IntentPattern[] = [
     weight: 1.1,
   },
   {
+    intent: "teach",
+    patterns: [
+      /(?:remember|learn|note)\s+that\s+.+\s+(?:is|are|means?)\s+.+/i,
+      /(?:remember|learn)\s+(?:this|the\s+following)\s*:/i,
+      /i(?:'m| am)\s+teaching\s+you/i,
+    ],
+    keywords: ["remember that","learn that","note that","i'm teaching you","teach you that"],
+    weight: 1.3,
+  },
+  {
+    intent: "correct",
+    patterns: [
+      /^(?:no,?\s+)?(?:that'?s|thats|this\s+is)\s+(?:wrong|incorrect|not\s+right|not\s+correct)/i,
+      /^actually,?\s+/i,
+      /^no[,.]?\s+it'?s\s+actually/i,
+      /you'?re\s+wrong/i,
+      /the\s+(?:correct|right)\s+answer\s+is/i,
+    ],
+    keywords: ["that's wrong","that is wrong","not correct","you're wrong","actually it's","incorrect"],
+    weight: 1.4,
+  },
+  {
+    intent: "reasoning",
+    patterns: [
+      /^why\s+/i,
+      /^how\s+come\s+/i,
+      /explain\s+(?:why|how)\s+/i,
+      /what(?:'s|\s+is)\s+the\s+reasoning/i,
+      /walk\s+me\s+through/i,
+    ],
+    keywords: ["why is","why does","how come","reasoning","walk me through","explain why","explain how"],
+    weight: 1.0,
+  },
+  {
+    intent: "challenge",
+    patterns: [
+      /(?:give|quiz|test|challenge)\s+me\s+(?:a\s+)?(?:problem|puzzle|riddle|question)/i,
+      /^quiz\s+me/i,
+      /^challenge\s+me/i,
+    ],
+    keywords: ["quiz me","challenge me","give me a problem","test me","give me a puzzle"],
+    weight: 1.2,
+  },
+  {
+    intent: "research",
+    patterns: [
+      /^research\s+/i,
+      /(?:look\s+into|dig\s+into|investigate)\s+/i,
+      /what\s+do\s+you\s+know\s+about\s+/i,
+      /tell\s+me\s+everything\s+(?:you\s+know\s+)?about\s+/i,
+    ],
+    keywords: ["research","look into","investigate","what do you know about","tell me everything about"],
+    weight: 1.0,
+  },
+  {
     intent: "general_knowledge",
     patterns: [
       /(?:capital\s+of|largest|smallest|tallest|highest|deepest)\s+\w+/i,
@@ -248,6 +303,33 @@ function extractEntities(text: string, intent: string): Record<string, unknown> 
   if (intent === "reminder") {
     const m = text.match(/remind\s+me\s+(?:to|about|that)\s+(.+)/i);
     if (m) entities.reminderText = m[1].trim();
+  }
+
+  if (intent === "teach") {
+    const m = text.match(/(?:remember|learn|note)\s+that\s+(.+?)\s+(?:is|are|means?)\s+(.+)/i);
+    if (m) {
+      entities.factKey = m[1].trim();
+      entities.factValue = m[2].trim();
+    } else {
+      // "remember this: X is Y" / "learn the following: X is Y"
+      const colonM = text.match(/(?:remember|learn)\s+(?:this|the\s+following)\s*:\s*(.+)/i);
+      if (colonM) {
+        const payload = colonM[1].trim();
+        const kv = payload.match(/^(.+?)\s+(?:is|are|means?)\s+(.+)$/i);
+        if (kv) { entities.factKey = kv[1].trim(); entities.factValue = kv[2].trim(); }
+        else entities.factValue = payload;
+      }
+    }
+  }
+
+  if (intent === "correct") {
+    const m = text.match(/(?:actually,?\s*)?(?:it'?s|it\s+is|the\s+(?:correct|right)\s+answer\s+is)\s+(.+)/i);
+    if (m) entities.correctAnswer = m[1].replace(/[.!]+$/,"").trim();
+  }
+
+  if (intent === "research") {
+    const m = text.match(/(?:research|look\s+into|dig\s+into|investigate|what\s+do\s+you\s+know\s+about|tell\s+me\s+everything(?:\s+you\s+know)?\s+about)\s+(.+)/i);
+    if (m) entities.topic = m[1].replace(/[?!.]+$/,"").trim();
   }
 
   return entities;

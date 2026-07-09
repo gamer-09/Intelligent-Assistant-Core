@@ -1,6 +1,16 @@
-# Intelligent Assistant Core
+# Intelligent Assistant Core (aka "Yang")
 
-A fully self-contained intelligent assistant that understands natural language — **no external AI APIs, no Ollama, no cloud dependencies**. Everything runs locally using a hand-built NLP engine.
+A fully self-contained intelligent assistant that understands natural language — **no external AI APIs, no Ollama, no cloud dependencies**. Everything runs locally using a hand-built NLP engine. It also answers to the name **Yang**.
+
+## Growth & self-correction
+
+Beyond the fixed skills below, the assistant has a small learning layer (`server/src/nlp/memory.ts`, tables in `server/src/db/index.ts`) so it improves from use — still with zero external calls:
+
+- **Teach it a fact** — `"Remember that <thing> is <fact>"`. Taught facts are checked before the built-in dictionaries, so they always take priority.
+- **Correct a mistake** — after a wrong answer, say `"Actually, it's <correct answer>"` or `"That's wrong, the correct answer is ..."`. The correction is stored and that exact question will never get the wrong answer again.
+- **Ask it to reason** — `"Why is X ...?"` / `"Explain how X works"` walks through what it knows about X step by step, using taught facts and built-in definitions.
+- **Challenge it** — `"Challenge me"` / `"Quiz me"` generates a random problem, checks your answer, and reveals the solution.
+- **Ask it to research** — `"Research X"` / `"What do you know about X?"` aggregates everything it has (taught facts + built-in knowledge) on a topic. If it comes up empty, the topic is logged as a "research gap" it can be taught later instead of silently failing.
 
 ---
 

@@ -34,8 +34,8 @@ router.post("/message", (req, res) => {
   stmts.insertMessage.run(sessionId, "assistant", responseText, detected.intent, detected.confidence);
   const asstId = (stmts.lastInsertId.get() as { id: number }).id;
 
-  const userRow  = stmts.getById.get(userId)  as ConversationRow;
-  const asstRow  = stmts.getById.get(asstId)  as ConversationRow;
+  const userRow  = stmts.getById.get(userId)  as unknown as ConversationRow;
+  const asstRow  = stmts.getById.get(asstId)  as unknown as ConversationRow;
 
   res.json({
     userMessage:      rowToMessage(userRow),
@@ -55,7 +55,7 @@ router.get("/history", (req, res) => {
     limit
       ? stmts.getHistoryLimited.all(sessionId, limit)
       : stmts.getHistory.all(sessionId)
-  ) as ConversationRow[];
+  ) as unknown as ConversationRow[];
 
   const total = (stmts.countBySession.get(sessionId) as { total: number }).total;
 
