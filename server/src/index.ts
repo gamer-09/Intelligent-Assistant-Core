@@ -8,7 +8,7 @@ import fs from "fs";
 // This ensures settings saved via POST /api/settings survive a server restart.
 (function loadDotEnv() {
   const __filename = fileURLToPath(import.meta.url);
-  const envPath = path.join(path.dirname(__filename), "..", "..", ".env");
+  const envPath = path.join(path.dirname(__filename), "..", ".env");
   if (!fs.existsSync(envPath)) return;
   for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
     const t = line.trim();
@@ -98,7 +98,7 @@ app.get("/api/healthz", (_req, res) => res.json({ status: "ok" }));
 const CLIENT_DIST = path.join(__dirname, "..", "..", "client", "dist");
 if (fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST));
-  app.get("/{*splat}", (_req, res) => {
+  app.get("*", (_req, res) => {
     res.sendFile(path.join(CLIENT_DIST, "index.html"));
   });
 }
