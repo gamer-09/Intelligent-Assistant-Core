@@ -3,6 +3,7 @@ import { MessageSquare, BookOpen, Sparkles } from "lucide-react";
 import ChatPage from "./pages/Chat";
 import HelpPage from "./pages/Help";
 import GeminiChatPage from "./pages/GeminiChat";
+import SidebarSettings from "./components/SidebarSettings";
 
 type Page = "chat" | "help" | "gemini";
 type SystemStatus = "checking" | "online" | "offline";
@@ -89,6 +90,8 @@ export default function App() {
             Gemini
           </button>
         </nav>
+        <SidebarSettings />
+
         <div className="sidebar-footer">
           {page === "gemini" ? (
             <>GEMINI TAB<br />{geminiReady ? "API key active — online" : "No API key — add one to go online"}</>

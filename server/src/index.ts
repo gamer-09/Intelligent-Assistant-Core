@@ -6,6 +6,7 @@ import fs from "fs";
 import chatRouter from "./routes/chat.js";
 import assistantRouter from "./routes/assistant.js";
 import geminiRouter from "./routes/gemini.js";
+import settingsRouter from "./routes/settings.js";
 import { isGeminiConfigured } from "./core/geminiClient.js";
 import { seedKnowledgeGraph } from "./core/knowledgeGraph.js";
 import { seedCausalKnowledge } from "./core/causalReasoning.js";
@@ -71,6 +72,7 @@ loadPlugins().then((loaded) => {
 app.use("/api/chat", chatRouter);
 app.use("/api/assistant", assistantRouter);
 app.use("/api/gemini", geminiRouter);
+app.use("/api/settings", settingsRouter);
 
 // Health check
 app.get("/api/healthz", (_req, res) => res.json({ status: "ok" }));
