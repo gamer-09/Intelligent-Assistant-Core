@@ -149,6 +149,7 @@ No machine learning, no embeddings, no external calls — pure deterministic log
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3001` | Server port |
+| `GEMINI_API_KEY` | *(none)* | Optional. Enables the Gemini tab/route. Everything else works fully offline without it. |
 
 Copy `.env.example` to `.env` to override.
 

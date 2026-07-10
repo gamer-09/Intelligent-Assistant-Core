@@ -236,18 +236,18 @@ const INTENT_PATTERNS: IntentPattern[] = [
   {
     intent: "comparative_teach",
     patterns: [
-      /^[\w\s]+?\s+(?:is|are)\s+(?:older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|richer|heavier|lighter)\s+than\s+[\w\s]+/i,
+      /^[\w\s]+?\s+(?:is|are)\s+(?:older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|weaker|richer|poorer|heavier|lighter)\s+than\s+[\w\s]+/i,
     ],
-    keywords: ["older than", "younger than", "taller than", "faster than", "bigger than"],
+    keywords: ["older than", "younger than", "taller than", "faster than", "bigger than", "stronger than", "weaker than", "richer than", "poorer than"],
     weight: 1.3,
   },
   {
     intent: "comparative_query",
     patterns: [
-      /who\s+is\s+(?:the\s+)?(?:oldest|youngest|tallest|shortest|fastest|slowest|biggest|smallest|strongest|richest|heaviest|lightest)/i,
-      /is\s+[\w\s]+?\s+(?:older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|richer|heavier|lighter)\s+than\s+[\w\s]+/i,
+      /who\s+is\s+(?:the\s+)?(?:oldest|youngest|tallest|shortest|fastest|slowest|biggest|smallest|strongest|weakest|richest|poorest|heaviest|lightest)/i,
+      /is\s+[\w\s]+?\s+(?:older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|weaker|richer|poorer|heavier|lighter)\s+than\s+[\w\s]+/i,
     ],
-    keywords: ["who is oldest", "who is tallest", "who is fastest", "is older than", "is taller than"],
+    keywords: ["who is oldest", "who is tallest", "who is fastest", "is older than", "is taller than", "is stronger than", "is weaker than"],
     weight: 1.2,
   },
   {
@@ -442,7 +442,7 @@ function extractEntities(text: string, intent: string): Record<string, unknown> 
   if (intent === "comparative_query") {
     const supM = lower.match(/who\s+is\s+(?:the\s+)?(\w+)/i);
     if (supM) entities.superlative = supM[1];
-    const cmpM = text.match(/is\s+([\w\s]+?)\s+(older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|richer|heavier|lighter)\s+than\s+([\w\s]+?)[?.!]*$/i);
+    const cmpM = text.match(/is\s+([\w\s]+?)\s+(older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|weaker|richer|poorer|heavier|lighter)\s+than\s+([\w\s]+?)[?.!]*$/i);
     if (cmpM) { entities.subjectA = cmpM[1].trim(); entities.comparative = cmpM[2]; entities.subjectB = cmpM[3].trim(); }
   }
 

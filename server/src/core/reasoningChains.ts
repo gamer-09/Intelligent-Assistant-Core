@@ -17,7 +17,9 @@ const COMPARATIVES: Record<string, { relation: string; superlative: string[] }> 
   bigger: { relation: "bigger_than", superlative: ["biggest", "largest"] },
   smaller: { relation: "smaller_than", superlative: ["smallest"] },
   stronger: { relation: "stronger_than", superlative: ["strongest"] },
+  weaker: { relation: "weaker_than", superlative: ["weakest"] },
   richer: { relation: "richer_than", superlative: ["richest"] },
+  poorer: { relation: "poorer_than", superlative: ["poorest"] },
   heavier: { relation: "heavier_than", superlative: ["heaviest"] },
   lighter: { relation: "lighter_than", superlative: ["lightest"] },
 };
