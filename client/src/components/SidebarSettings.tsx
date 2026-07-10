@@ -12,7 +12,7 @@ interface Commit {
   date: string;
 }
 
-type SaveState = "idle" | "saving" | "saved" | "error";
+type SaveState = "idle" | "saving" | "saved" | "error" | "saved-no-persist";
 
 function timeAgo(dateStr: string): string {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -31,6 +31,7 @@ export default function SidebarSettings() {
   const [fsRootInput, setFsRootInput] = useState("");
   const [editingFsRoot, setEditingFsRoot] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState("");
 
   // Fetch latest commit from GitHub (public API, no auth needed)
   const fetchCommit = useCallback(() => {
@@ -86,15 +87,18 @@ export default function SidebarSettings() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fsRoot: value }),
       });
-      if (!res.ok) throw new Error("save failed");
-      const d = await res.json();
-      setFsRoot(d.fsRoot);
+      const text = await res.text();
+      let d: { ok?: boolean; fsRoot?: string; persisted?: boolean; persistError?: string; error?: string };
+      try { d = JSON.parse(text); } catch { throw new Error(`Server error: ${text.slice(0, 120)}`); }
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setFsRoot(d.fsRoot ?? value);
       setEditingFsRoot(false);
-      setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 2000);
-    } catch {
+      setSaveState(d.persisted === false ? "saved-no-persist" : "saved");
+      setTimeout(() => setSaveState("idle"), d.persisted === false ? 4000 : 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
       setSaveState("error");
-      setTimeout(() => setSaveState("idle"), 2500);
+      setTimeout(() => setSaveState("idle"), 4000);
     }
   }
 
@@ -155,7 +159,9 @@ export default function SidebarSettings() {
               </button>
             </div>
             {saveState === "error" && (
-              <span className="sb-muted sb-error">Failed to save</span>
+              <span className="sb-muted sb-error" title={saveError}>
+                Error: {saveError || "Failed to save"}
+              </span>
             )}
           </>
         ) : (
@@ -171,6 +177,11 @@ export default function SidebarSettings() {
         {saveState === "saved" && (
           <span className="sb-saved">
             <CheckCircle size={11} /> Saved · takes effect now
+          </span>
+        )}
+        {saveState === "saved-no-persist" && (
+          <span className="sb-muted" style={{ color: "#facc15" }}>
+            ⚠ Active now · restart server to persist
           </span>
         )}
         {!editingFsRoot && (

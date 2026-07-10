@@ -86,14 +86,27 @@ router.post("/", (req, res) => {
   }
 
   const trimmed = fsRoot.trim();
-  writeEnvKey("ASSISTANT_FS_ROOT", trimmed);
-  // Apply immediately to the running process so no restart is needed.
+
+  // Apply to the running process immediately — this works even if the .env
+  // write fails (e.g. read-only filesystem, wrong path).
   if (trimmed) {
     process.env.ASSISTANT_FS_ROOT = trimmed;
   } else {
     delete process.env.ASSISTANT_FS_ROOT;
   }
-  res.json({ ok: true, fsRoot: trimmed });
+
+  // Persist to server/.env so the setting survives a server restart.
+  let persisted = false;
+  let persistError: string | undefined;
+  try {
+    writeEnvKey("ASSISTANT_FS_ROOT", trimmed);
+    persisted = true;
+  } catch (err) {
+    persistError = err instanceof Error ? err.message : String(err);
+    console.error("[settings] Failed to write .env:", persistError, "| ENV_PATH:", ENV_PATH);
+  }
+
+  res.json({ ok: true, fsRoot: trimmed, persisted, persistError });
 });
 
 export default router;
