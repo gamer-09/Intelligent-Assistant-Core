@@ -23,6 +23,7 @@ import { semanticMatch } from "./semantic.js";
 import { reflect } from "./reflection.js";
 import { combineConfidence, hedge } from "./confidence.js";
 import { observeMessage } from "./userModel.js";
+import { getActiveGoal, formatGoal } from "./goals.js";
 
 export interface PipelineTraceStep { stage: string; detail: string; }
 
@@ -35,6 +36,13 @@ export interface PipelineResult {
 }
 
 const lastTraceBySession = new Map<string, PipelineTraceStep[]>();
+
+// Autonomous goal resumption (review §13/§16): previously an active goal
+// just sat in the DB until the user happened to ask about it again — Yang
+// never proactively resurfaced unfinished work. This nudges once per
+// session the next time the user talks to it while a goal is still open,
+// rather than requiring the user to remember and ask.
+const nudgedForGoalThisSession = new Set<string>();
 
 export function getLastTrace(sessionId: string): PipelineTraceStep[] {
   return lastTraceBySession.get(sessionId) ?? [];
@@ -107,6 +115,16 @@ export async function runPipeline(text: string, sessionId: string, tavilyApiKey?
   trace.push({ stage: "context", detail: `${context.recent.length} recent turn(s) in window${context.summary ? "; older turns summarized" : ""}` });
   observeMessage(sessionId, text);
 
+  let goalNudge = "";
+  if (!nudgedForGoalThisSession.has(sessionId)) {
+    const activeGoal = getActiveGoal(sessionId);
+    if (activeGoal && activeGoal.status === "active" && !activeGoal.steps.every((s) => s.done)) {
+      nudgedForGoalThisSession.add(sessionId);
+      goalNudge = `\n\n---\n_By the way, you still have an unfinished goal:_\n${formatGoal(activeGoal)}`;
+      trace.push({ stage: "autonomy", detail: `proactively resurfaced unfinished goal "${activeGoal.title}"` });
+    }
+  }
+
   const subtasks = splitCompoundRequest(text);
   trace.push({ stage: "planning", detail: subtasks.length > 1 ? `split into ${subtasks.length} subtasks` : "single-step request, no split needed" });
 
@@ -123,7 +141,7 @@ export async function runPipeline(text: string, sessionId: string, tavilyApiKey?
 
   const combined = combineConfidence(confidences);
   const stitched = stitchAnswers(results);
-  const finalText = subtasks.length > 1 ? stitched : hedge(stitched, combined);
+  const finalText = (subtasks.length > 1 ? stitched : hedge(stitched, combined)) + goalNudge;
   trace.push({ stage: "confidence", detail: `combined confidence=${combined.toFixed(2)}` });
 
   lastTraceBySession.set(sessionId, trace);

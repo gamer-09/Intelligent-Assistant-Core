@@ -34,8 +34,20 @@ const INVERSE: Record<string, string> = {
   heavier_than: "lighter_than", lighter_than: "heavier_than",
 };
 
-/** Parse "X is <comparative> than Y" statements into a stored relation fact. */
-export function learnComparative(sentence: string): { subject: string; relation: string; object: string } | null {
+export interface LearnComparativeResult { subject: string; relation: string; object: string; contradiction?: string }
+
+/**
+ * Parse "X is <comparative> than Y" statements into a stored relation fact.
+ *
+ * Self-critique (review §15): before inserting, checks whether the opposite
+ * relation already holds between the same pair (or transitively, a cycle
+ * would form) — e.g. teaching "Sarah is older than John" after "John is
+ * older than Sarah" was already taught. Previously this was inserted
+ * silently, leaving two contradictory edges in the graph forever with
+ * nothing ever noticing. Now it's still stored (so "what's the latest
+ * claim" still works) but the contradiction is surfaced to the caller.
+ */
+export function learnComparative(sentence: string): LearnComparativeResult | null {
   const m = sentence.match(/^([\w\s]+?)\s+(?:is|are)\s+(\w+)\s+than\s+([\w\s]+?)[.!]?$/i);
   if (!m) return null;
   const word = m[2].toLowerCase();
@@ -43,10 +55,16 @@ export function learnComparative(sentence: string): { subject: string; relation:
   if (!comp) return null;
   const subject = m[1].trim().toLowerCase();
   const object = m[3].trim().toLowerCase();
+
+  let contradiction: string | undefined;
+  if (isRelated(object, comp.relation, subject)) {
+    contradiction = `This contradicts what I already know: I previously learned that **${object}** ${comp.relation.replace("_", " ")} **${subject}** (directly, or through a chain of other facts) — the opposite of what you just told me.`;
+  }
+
   stmts.insertRelationFact.run(subject, comp.relation, object);
   const inv = INVERSE[comp.relation];
   if (inv) stmts.insertRelationFact.run(object, inv, subject);
-  return { subject, relation: comp.relation, object };
+  return { subject, relation: comp.relation, object, contradiction };
 }
 
 function buildGraph(relation: string): Map<string, Set<string>> {

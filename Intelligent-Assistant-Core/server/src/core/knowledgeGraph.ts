@@ -155,3 +155,23 @@ export function inferCategoryProperty(entity: string, property: string): { value
 export function categoryProperties(category: string): Record<string, string> | undefined {
   return CATEGORY_PROPERTIES[category.toLowerCase().trim()];
 }
+
+// ─── Concept formation ─────────────────────────────────────────────────────────
+//
+// Review finding: "can Yang discover categories (dog, cat, wolf -> animal),
+// or must every relationship be manually programmed?" Previously every
+// category had to be hand-taught per entity via `learnIsA`. This adds a
+// bottom-up pass: given a set of entities, find which known categories they
+// *all* already belong to (directly or transitively), so a shared ancestor
+// category is discovered from their existing relations rather than being
+// separately declared. It's a small, honest step (discovery over an
+// existing is-a graph, not clustering from raw unstructured examples) but
+// it is genuine abstraction rather than manual programming.
+export interface ConceptSuggestion { sharedCategories: string[]; entities: string[]; }
+
+export function suggestSharedCategory(entities: string[]): ConceptSuggestion {
+  const chains = entities.map((e) => new Set(categoryChain(e)));
+  if (chains.length === 0) return { sharedCategories: [], entities };
+  const shared = [...chains[0]].filter((cat) => chains.every((chain) => chain.has(cat)));
+  return { sharedCategories: shared, entities };
+}

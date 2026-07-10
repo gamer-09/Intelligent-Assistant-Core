@@ -9,7 +9,8 @@ import {
   normalizeQuery,
 } from "./memory.js";
 import { evaluateExpression } from "../core/mathParser.js";
-import { addTaughtFact, relationsFrom, relationsByType, learnIsA, inferCategoryProperty, categoryChain } from "../core/knowledgeGraph.js";
+import { addTaughtFact, relationsFrom, relationsByType, learnIsA, inferCategoryProperty, categoryChain, suggestSharedCategory } from "../core/knowledgeGraph.js";
+import { whatHappensIf, compareContainment, learnCausal } from "../core/causalReasoning.js";
 import { learnComparative, isRelated, rankByRelation, resolveSuperlativeWord } from "../core/reasoningChains.js";
 import { bestFactMatch } from "../core/memoryRanking.js";
 import { lookupTopic, formatWebResult } from "../core/webIntel.js";
@@ -485,6 +486,45 @@ function handleCorrect(entities: Record<string, unknown>, sessionId: string): st
 }
 
 function handleReasoning(text: string, lower: string): string {
+  // Common-sense causal reasoning: "if I put ice in the sun, what happens?",
+  // "what happens if I drop a glass?", "why does ice melt in the sun?" —
+  // answered by tracing cause -> effect over a small built-in world model
+  // (see causalReasoning.ts) instead of requiring a hand-written rule per
+  // exact question.
+  const hypotheticalM = lower.match(/(?:if\s+i\s+|if\s+you\s+)?(.+?)\s*,?\s*what\s+(?:happens|would\s+happen)/i)
+    ?? lower.match(/^why\s+(?:does|do|might|would)\s+(.+?)(?:\?|$)/i)
+    ?? lower.match(/^why\s+(?:might\s+)?(.+?)\s+(?:break|melt|rust|spoil|shatter)(?:\?|$)/i);
+  if (hypotheticalM) {
+    const cause = hypotheticalM[1].trim();
+    const hits = whatHappensIf(cause);
+    if (hits.length > 0) {
+      const lines = hits.map((h) => `${h.effect}${h.because ? ` — because ${h.because}` : ""}`);
+      return `Reasoning from cause to effect:\n${lines.map((l) => `- ${l}`).join("\n")}\n\n(This is inferred from a stored cause → effect relationship, not a scripted answer to this exact sentence.)`;
+    }
+  }
+
+  // Concept formation: "what do a dog, a cat and a wolf have in common?" —
+  // discovered from shared category membership already in the graph rather
+  // than a hand-written rule for this specific trio (see suggestSharedCategory).
+  const commonM = lower.match(/what\s+do\s+(.+?)\s+have\s+in\s+common/i);
+  if (commonM) {
+    const entities = commonM[1].split(/,|\band\b/i).map((e) => e.replace(/^an?\s+|^the\s+/i, "").trim()).filter(Boolean);
+    if (entities.length >= 2) {
+      const { sharedCategories } = suggestSharedCategory(entities);
+      if (sharedCategories.length > 0) {
+        return `${entities.join(", ")} are all a kind of **${sharedCategories.join(", ")}** — discovered from the categories I already know each of them belongs to, not a rule written specifically for this group.`;
+      }
+      return `I don't yet know a shared category for ${entities.join(", ")} — I only know categories that have been explicitly taught (e.g. "a dog is a mammal"), so if none of these have been taught a category yet, I can't discover one.`;
+    }
+  }
+
+  // Size/containment common sense: "can an elephant fit inside a backpack?"
+  const fitM = lower.match(/can\s+an?\s+(.+?)\s+fit\s+(?:inside|in)\s+an?\s+(.+?)(?:\?|$)/i);
+  if (fitM) {
+    const result = compareContainment(fitM[1].trim(), fitM[2].trim());
+    if (result) return `${result.fits ? "Yes" : "No"} — ${result.reason}.`;
+  }
+
   const topicM = lower.match(/^(?:why|how\s+come)\s+(?:is|are|does|do|did)\s+(.+?)(?:\?|$)/i)
     ?? lower.match(/explain\s+(?:why|how)\s+(.+?)(?:\?|$)/i);
   const topic = topicM?.[1]?.trim();
@@ -697,6 +737,9 @@ async function handleFallback(lower: string, original: string, tavilyApiKey?: st
 function handleComparativeTeach(text: string): string {
   const learned = learnComparative(text.trim());
   if (!learned) return "I couldn't parse that as a comparison. Try: **\"John is older than Sarah.\"**";
+  if (learned.contradiction) {
+    return `⚠️ Noted: **${learned.subject}** ${learned.relation.replace("_", " ")} **${learned.object}**. ${learned.contradiction} I've stored your latest statement, but you may want to correct one of them.`;
+  }
   return `✓ Noted: **${learned.subject}** ${learned.relation.replace("_", " ")} **${learned.object}**. I can now reason about this transitively — ask me "who is oldest?" or "is X older than Y?".`;
 }
 

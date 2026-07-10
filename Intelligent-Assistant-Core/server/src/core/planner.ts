@@ -23,9 +23,34 @@ export function splitCompoundRequest(text: string): string[] {
   return parts;
 }
 
-export interface SubtaskResult { subtask: string; answer: string; }
+export interface SubtaskResult { subtask: string; answer: string; failed?: boolean; }
+
+// Verification (review §7: "can Yang verify completion / recover from
+// failure?"). Previously subtasks were executed and stitched together
+// blindly — a failed step ("I didn't quite catch that") was presented with
+// the same confidence as a successful one, and nothing checked or flagged
+// it. This scans each subtask's answer for known failure signatures so the
+// stitched response honestly reports which steps didn't complete instead of
+// silently passing failure through as if it were a real answer.
+const FAILURE_SIGNATURES: RegExp[] = [
+  /^i didn't quite catch that/i,
+  /^i'm not confident i understood/i,
+  /^i don't have a built-in explanation/i,
+  /^i don't have a previous question/i,
+  /wasn't able to generate a response/i,
+];
+
+export function markFailures(results: SubtaskResult[]): SubtaskResult[] {
+  return results.map((r) => ({ ...r, failed: FAILURE_SIGNATURES.some((p) => p.test(r.answer.trim())) }));
+}
 
 export function stitchAnswers(results: SubtaskResult[]): string {
-  if (results.length === 1) return results[0].answer;
-  return results.map((r, i) => `**${i + 1}. ${r.subtask}**\n${r.answer}`).join("\n\n");
+  const marked = markFailures(results);
+  if (marked.length === 1) return marked[0].answer;
+  const body = marked.map((r, i) => `**${i + 1}. ${r.subtask}**${r.failed ? " ⚠️ _(this step did not complete)_" : ""}\n${r.answer}`).join("\n\n");
+  const failedCount = marked.filter((r) => r.failed).length;
+  const footer = failedCount > 0
+    ? `\n\n---\n${failedCount} of ${marked.length} step(s) above didn't complete successfully — see the ⚠️ markers.`
+    : "";
+  return body + footer;
 }

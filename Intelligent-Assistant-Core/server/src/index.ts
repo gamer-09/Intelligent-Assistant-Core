@@ -8,6 +8,7 @@ import assistantRouter from "./routes/assistant.js";
 import geminiRouter from "./routes/gemini.js";
 import { isGeminiConfigured } from "./core/geminiClient.js";
 import { seedKnowledgeGraph } from "./core/knowledgeGraph.js";
+import { seedCausalKnowledge } from "./core/causalReasoning.js";
 import { buildSemanticIndex } from "./core/semantic.js";
 import { registerBuiltinTools } from "./core/registerTools.js";
 import { loadPlugins } from "./core/plugins.js";
@@ -37,6 +38,7 @@ const INVENTION_TEXTS: Record<string, string> = {
   relativity: "Albert Einstein developed special relativity (1905) and general relativity (1915).",
 };
 seedKnowledgeGraph({ capitals: GEO_CAPITALS, definitions: DEFINITION_TERMS, inventions: INVENTION_TEXTS });
+seedCausalKnowledge();
 
 // Map capability ids -> the actual intent name they correspond to, so the
 // semantic (BM25) index's examples are labeled with real, routable intents.

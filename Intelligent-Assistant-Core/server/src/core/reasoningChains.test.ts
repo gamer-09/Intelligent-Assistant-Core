@@ -28,3 +28,11 @@ test("ranks candidates by relation depth", () => {
   const ranked = rankByRelation("older_than", [A, B, C]);
   assert.equal(ranked[0], A);
 });
+
+test("self-critique: flags a contradiction against a previously taught relation", () => {
+  const X = "__test_dave__";
+  const Y = "__test_erin__";
+  learnComparative(`${X} is taller than ${Y}`);
+  const contradicted = learnComparative(`${Y} is taller than ${X}`);
+  assert.ok(contradicted?.contradiction, "should detect the opposite relation already exists");
+});
