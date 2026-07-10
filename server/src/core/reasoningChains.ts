@@ -29,7 +29,8 @@ const INVERSE: Record<string, string> = {
   taller_than: "shorter_than", shorter_than: "taller_than",
   faster_than: "slower_than", slower_than: "faster_than",
   bigger_than: "smaller_than", smaller_than: "bigger_than",
-  stronger_than: "weaker_than", richer_than: "poorer_than",
+  stronger_than: "weaker_than", weaker_than: "stronger_than",
+  richer_than: "poorer_than", poorer_than: "richer_than",
   heavier_than: "lighter_than", lighter_than: "heavier_than",
 };
 
