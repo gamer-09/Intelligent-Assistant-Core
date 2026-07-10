@@ -43,6 +43,7 @@ db.exec(`
     source     TEXT    NOT NULL DEFAULT 'taught',
     updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   );
+  CREATE INDEX IF NOT EXISTS idx_learned_facts_updated_at ON learned_facts(updated_at);
 
   -- Corrections: a normalized past query mapped to the answer a user
   -- corrected it to. Consulted before regenerating an answer, so a
@@ -87,6 +88,9 @@ db.exec(`
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   );
   CREATE INDEX IF NOT EXISTS idx_kg_edges_from ON kg_edges(from_node, relation);
+  CREATE INDEX IF NOT EXISTS idx_kg_edges_to_node ON kg_edges(to_node);
+  CREATE INDEX IF NOT EXISTS idx_kg_edges_to_literal ON kg_edges(to_literal);
+  CREATE INDEX IF NOT EXISTS idx_kg_nodes_kind ON kg_nodes(kind);
 
   -- Symbolic relation facts for multi-step reasoning, e.g. "john older_than sarah".
   CREATE TABLE IF NOT EXISTS relation_facts (
@@ -98,6 +102,8 @@ db.exec(`
     UNIQUE(subject, relation, object)
   );
   CREATE INDEX IF NOT EXISTS idx_relation_facts_rel ON relation_facts(relation);
+  CREATE INDEX IF NOT EXISTS idx_relation_facts_subject ON relation_facts(subject);
+  CREATE INDEX IF NOT EXISTS idx_relation_facts_object ON relation_facts(object);
 
   -- Cached web lookups (Wikipedia summaries) so repeated queries don't
   -- re-fetch, and staleness can be detected.

@@ -21,9 +21,25 @@ export function normalizeQuery(text: string): string {
     .replace(/\s+/g, " ");
 }
 
-export function teachFact(key: string, value: string): void {
-  stmts.upsertFact.run(normalizeQuery(key), value.trim());
-  stmts.resolveGapsForTopic.run(normalizeQuery(key));
+export interface TeachResult {
+  /** True if a differently-valued fact already existed under this key (now overwritten). */
+  contradicted: boolean;
+  previousValue?: string;
+}
+
+/**
+ * Store a taught fact. Detects contradictions: if a fact already exists under this
+ * key with a *different* value, the caller is told so it can surface an
+ * "update?" confirmation instead of silently overwriting conflicting knowledge.
+ */
+export function teachFact(key: string, value: string): TeachResult {
+  const normalizedKey = normalizeQuery(key);
+  const existing = stmts.getFact.get(normalizedKey) as unknown as LearnedFactRow | undefined;
+  const trimmedValue = value.trim();
+  const contradicted = !!existing && existing.value.trim() !== trimmedValue;
+  stmts.upsertFact.run(normalizedKey, trimmedValue);
+  stmts.resolveGapsForTopic.run(normalizedKey);
+  return { contradicted, previousValue: existing?.value };
 }
 
 export function recallFact(key: string): LearnedFactRow | undefined {

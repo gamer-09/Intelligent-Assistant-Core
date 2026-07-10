@@ -392,8 +392,11 @@ function handleTeach(entities: Record<string, unknown>): string {
   if (!key || !value) {
     return "Tell me what to remember in the form: **\"Remember that <thing> is <fact>\"** — e.g. \"Remember that my favorite color is blue.\"";
   }
-  teachFact(key, value);
+  const { contradicted, previousValue } = teachFact(key, value);
   addTaughtFact(key, value); // also record in the knowledge graph for multi-hop traversal
+  if (contradicted) {
+    return `⚠️ You previously told me **${key}** is **${previousValue}** — I've updated it to **${value}**. Let me know if that was a mistake.`;
+  }
   return `✓ Got it — I'll remember that **${key}** is **${value}**. Ask me about it any time and I'll recall it.`;
 }
 

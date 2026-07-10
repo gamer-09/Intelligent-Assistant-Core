@@ -8,6 +8,10 @@ import { tokenize } from "./retrieval.js";
 
 const RECENT_WINDOW = 6; // messages kept verbatim
 const SUMMARIZE_THRESHOLD = 20; // once history exceeds this, older turns get folded into a summary
+// Hard cap on how many rows we ever pull from the DB for summarization. Without this,
+// getContext()/refreshSummary() cost grows with total session length forever (O(N) per
+// turn, effectively O(N^2) over a session's life) since every call re-fetched full history.
+const MAX_ROWS_FOR_SUMMARY = 200;
 
 export interface SessionContext {
   recent: ConversationRow[];
@@ -25,12 +29,16 @@ function summarize(rows: ConversationRow[]): string {
 }
 
 export function getContext(sessionId: string): SessionContext {
-  const all = stmts.getHistory.all(sessionId) as unknown as ConversationRow[];
-  if (all.length <= SUMMARIZE_THRESHOLD) {
+  const total = (stmts.countBySession.get(sessionId) as { total: number }).total;
+  if (total <= SUMMARIZE_THRESHOLD) {
+    const all = stmts.getHistoryLimited.all(sessionId, SUMMARIZE_THRESHOLD) as unknown as ConversationRow[];
     return { recent: all.slice(-RECENT_WINDOW), summary: "" };
   }
-  const older = all.slice(0, -RECENT_WINDOW);
-  const recent = all.slice(-RECENT_WINDOW);
+  // Bounded fetch: only ever look at the most recent MAX_ROWS_FOR_SUMMARY messages,
+  // never the entire session history.
+  const bounded = stmts.getHistoryLimited.all(sessionId, MAX_ROWS_FOR_SUMMARY) as unknown as ConversationRow[];
+  const older = bounded.slice(0, -RECENT_WINDOW);
+  const recent = bounded.slice(-RECENT_WINDOW);
   const existing = stmts.getContextSummary.get(sessionId) as { summary: string } | undefined;
   const summary = existing?.summary || summarize(older);
   if (!existing) stmts.upsertContextSummary.run(sessionId, summary);
@@ -39,8 +47,9 @@ export function getContext(sessionId: string): SessionContext {
 
 /** Call periodically (e.g. every N messages) to refresh the stored summary as history grows. */
 export function refreshSummary(sessionId: string): void {
-  const all = stmts.getHistory.all(sessionId) as unknown as ConversationRow[];
-  if (all.length <= SUMMARIZE_THRESHOLD) return;
-  const older = all.slice(0, -RECENT_WINDOW);
+  const total = (stmts.countBySession.get(sessionId) as { total: number }).total;
+  if (total <= SUMMARIZE_THRESHOLD) return;
+  const bounded = stmts.getHistoryLimited.all(sessionId, MAX_ROWS_FOR_SUMMARY) as unknown as ConversationRow[];
+  const older = bounded.slice(0, -RECENT_WINDOW);
   stmts.upsertContextSummary.run(sessionId, summarize(older));
 }
