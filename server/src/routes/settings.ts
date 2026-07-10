@@ -1,23 +1,9 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const router = Router();
-
-// ── Localhost-only guard ────────────────────────────────────────────────────
-// /api/settings mutates ASSISTANT_FS_ROOT, a security-boundary setting.
-// Only requests arriving from the loopback interface are allowed.
-function localOnly(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.socket.remoteAddress ?? "";
-  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-  if (!isLocal) {
-    res.status(403).json({ error: "Settings endpoint is only accessible from localhost." });
-    return;
-  }
-  next();
-}
-router.use(localOnly);
 
 // Resolve server/.env — one level above this file's compiled output (dist/routes/).
 // During dev (ts-node / tsx) __dirname is src/routes/, so go up two levels to reach server/.
