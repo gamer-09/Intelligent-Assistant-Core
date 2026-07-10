@@ -1,0 +1,524 @@
+# Comprehensive Architectural Review & Improvement Prompt
+
+You are performing a critical architectural review of an independent AI assistant. This project **must remain completely independent** and **must not rely on external AI APIs or hosted LLM services** (OpenAI, Anthropic, Gemini, Grok, DeepSeek APIs, etc.). Any recommendations should assume all intelligence is implemented locally through algorithms, rule systems, local machine learning models, or custom reasoning.
+
+Internet access for web searches is acceptable, but the assistant's reasoning, memory, and decision-making must remain self-contained.
+
+Your task is to identify weaknesses and propose improvements while respecting this philosophy.
+
+## Current Strengths
+
+The assistant already has several solid foundations:
+
+* Deterministic behavior
+* Rule-based intent recognition
+* Persistent memory
+* User-teachable facts
+* Modular architecture
+* Offline capability
+* Good code organization
+* No dependency on external AI providers
+
+Do **not** recommend replacing these systems with an LLM. Instead, improve the architecture while preserving independence.
+
+---
+
+# Areas That Need Improvement
+
+## 1. Semantic Understanding
+
+The assistant appears to rely primarily on keyword matching, regex, and manually defined intents.
+
+This limits its ability to recognize that different sentences can express the same meaning.
+
+Examples:
+
+* "Who invented Python?"
+* "Who created the Python programming language?"
+* "Who is the creator of Python?"
+
+These should map to the same intent without requiring dozens of manually written rules.
+
+Possible improvements:
+
+* Local sentence embeddings
+* Local semantic similarity models
+* TF-IDF + cosine similarity
+* BM25
+* Word vector comparisons
+* Hybrid semantic retrieval
+
+The goal is semantic understanding without cloud AI.
+
+---
+
+## 2. Memory Retrieval
+
+Current memory appears to rely on direct matching.
+
+Instead, memory should be ranked by relevance.
+
+A stronger system would:
+
+* score memories
+* rank memories
+* merge duplicate facts
+* prefer recent information
+* prefer verified information
+* handle conflicting memories
+
+The assistant should retrieve the most relevant information rather than the first matching information.
+
+---
+
+## 3. Knowledge Representation
+
+Facts currently exist mostly as isolated pieces of information.
+
+Instead, build a knowledge graph.
+
+Example:
+
+Python
+
+→ programming language
+
+→ created by Guido van Rossum
+
+→ first released in 1991
+
+Relationships enable much stronger reasoning than isolated text.
+
+---
+
+## 4. Multi-Step Reasoning
+
+Many problems require several reasoning steps.
+
+Example:
+
+John is older than Sarah.
+
+Sarah is older than Mike.
+
+Who is oldest?
+
+Instead of pattern matching, implement reasoning chains.
+
+Possible approaches:
+
+* graph traversal
+* logical inference
+* forward chaining
+* backward chaining
+* symbolic reasoning
+* constraint propagation
+
+---
+
+## 5. Planning System
+
+Current architecture appears reactive.
+
+Instead, create a planner.
+
+Desired flow:
+
+User request
+
+↓
+
+Understand objective
+
+↓
+
+Break into tasks
+
+↓
+
+Determine execution order
+
+↓
+
+Execute tasks
+
+↓
+
+Verify results
+
+↓
+
+Respond
+
+The planner should work even without an LLM.
+
+---
+
+## 6. Tool Architecture
+
+Tools should become independent modules.
+
+Every tool should expose:
+
+* name
+* description
+* capabilities
+* permissions
+* inputs
+* outputs
+* execution method
+
+The assistant should dynamically choose which tools to invoke.
+
+Examples:
+
+* calculator
+* filesystem
+* browser
+* reminder manager
+* search
+* document reader
+* code analyzer
+
+---
+
+## 7. Reflection Layer
+
+The assistant should evaluate its own responses before sending them.
+
+Pipeline:
+
+Generate answer
+
+↓
+
+Evaluate confidence
+
+↓
+
+Check consistency
+
+↓
+
+Detect contradictions
+
+↓
+
+Improve response
+
+↓
+
+Output
+
+Reflection reduces incorrect answers.
+
+---
+
+## 8. Confidence Scoring
+
+Every reasoning process should produce confidence.
+
+High confidence:
+
+Answer directly.
+
+Medium confidence:
+
+Answer while expressing uncertainty.
+
+Low confidence:
+
+Admit insufficient knowledge instead of guessing.
+
+---
+
+## 9. Context Management
+
+Conversation history should not grow indefinitely.
+
+Implement:
+
+* conversation summarization
+* memory compression
+* topic segmentation
+* relevance filtering
+* context windows
+
+Only the most relevant context should participate in reasoning.
+
+---
+
+## 10. Long-Term User Model
+
+Remember more than isolated facts.
+
+Track:
+
+* preferences
+* projects
+* goals
+* communication style
+* expertise level
+* favorite technologies
+* recurring workflows
+
+This allows deeper personalization.
+
+---
+
+## 11. Goal Tracking
+
+The assistant should remember ongoing objectives.
+
+Example:
+
+Current Goal:
+
+Build portfolio website
+
+Progress:
+
+✓ Frontend
+
+✓ Backend
+
+□ Deployment
+
+Future conversations should continue naturally.
+
+---
+
+## 12. Plugin Architecture
+
+New capabilities should be installable without modifying core code.
+
+A plugin system should allow:
+
+* discovery
+* registration
+* permissions
+* dependency management
+* version compatibility
+
+---
+
+## 13. Retrieval Improvements
+
+Current retrieval likely performs linear searches.
+
+Consider:
+
+* inverted indexes
+* BM25
+* vector search
+* hybrid ranking
+* graph traversal
+* weighted scoring
+
+These dramatically improve scalability.
+
+---
+
+## 14. Self-Learning
+
+Instead of only learning when explicitly instructed:
+
+The assistant should identify:
+
+* repeated unanswered questions
+* recurring corrections
+* repeated workflows
+
+Then request permission to permanently learn.
+
+Learning should always remain transparent and user-controlled.
+
+---
+
+## 15. Document Intelligence
+
+Support indexing and understanding of:
+
+* PDF
+* DOCX
+* Markdown
+* HTML
+* source code
+* plain text
+
+Documents should become searchable knowledge sources.
+
+---
+
+## 16. Code Intelligence
+
+Improve software development support with:
+
+* AST parsing
+* project indexing
+* dependency graphs
+* symbol lookup
+* reference tracking
+* bug localization
+* refactoring suggestions
+* static analysis
+
+---
+
+## 17. Web Intelligence
+
+Since web access is allowed, make better use of it.
+
+The assistant should:
+
+* search only when necessary
+* cache useful results
+* cite sources
+* compare multiple sources
+* detect stale information
+* merge web knowledge with internal knowledge
+
+The web should augment reasoning rather than replace it.
+
+---
+
+## 18. Session Persistence
+
+Not all state should disappear after restart.
+
+Persist appropriate data such as:
+
+* pending reminders
+* unfinished goals
+* active tasks
+* learned corrections
+* user preferences
+
+---
+
+## 19. Mathematical Engine
+
+If mathematical evaluation currently relies on dynamically executing expressions after sanitization, replace it with a dedicated parser.
+
+A proper expression parser offers:
+
+* improved safety
+* better error reporting
+* easier extension
+* support for advanced functions
+
+---
+
+## 20. Scalability
+
+Evaluate the efficiency of:
+
+* memory lookup
+* intent detection
+* fact storage
+* graph traversal
+* search
+* plugin loading
+
+Replace O(n) operations with indexed or logarithmic alternatives where appropriate.
+
+---
+
+## 21. Explainable Reasoning
+
+Whenever possible, the assistant should be able to explain *how* it reached a conclusion.
+
+Example:
+
+Question
+
+↓
+
+Retrieved memory
+
+↓
+
+Applied logical rule
+
+↓
+
+Verified result
+
+↓
+
+Generated answer
+
+Explainability increases trust and simplifies debugging.
+
+---
+
+## 22. Modular Reasoning Pipeline
+
+Refactor the reasoning flow into clear stages such as:
+
+Input
+
+↓
+
+Language understanding
+
+↓
+
+Intent detection
+
+↓
+
+Memory retrieval
+
+↓
+
+Planning
+
+↓
+
+Tool selection
+
+↓
+
+Reasoning
+
+↓
+
+Verification
+
+↓
+
+Response generation
+
+Each stage should be independently replaceable and testable.
+
+---
+
+# Constraints
+
+Do **not** recommend:
+
+* OpenAI API
+* Anthropic API
+* Claude API
+* DeepSeek API
+* Grok API
+* Any hosted LLM dependency
+
+Instead, prefer:
+
+* symbolic AI
+* expert systems
+* finite-state reasoning
+* graph reasoning
+* local embedding models
+* local vector databases
+* BM25
+* TF-IDF
+* classical NLP
+* statistical methods
+* custom algorithms
+* local inference models
+* hybrid symbolic + statistical approaches
+
+The objective is to build an intelligent assistant that remains fully independent while becoming substantially more capable, scalable, explainable, and maintainable.
