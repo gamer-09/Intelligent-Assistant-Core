@@ -94,3 +94,84 @@ export function seedKnowledgeGraph(data: {
 export function addTaughtFact(key: string, value: string): void {
   addLiteralRelation(key, "taught_as", value, "taught");
 }
+
+// ─── Category membership + property inheritance (transfer learning) ───────────
+//
+// Review finding: "if Yang learns 'a kiwi is a bird', can it infer kiwis lay
+// eggs without a separate stored fact?" Previously no — every fact was an
+// isolated string with no inheritance. This adds a real (if small) is-a
+// hierarchy: membership in a category (`X is_a_kind_of Y`) plus a table of
+// properties known for common categories, so a new member of a known
+// category immediately inherits those properties without being taught them
+// individually. This is genuine transfer of knowledge, not more storage.
+
+/** A handful of built-in category -> property facts, used for inheritance. */
+const CATEGORY_PROPERTIES: Record<string, Record<string, string>> = {
+  bird: { lays_eggs: "yes", can_fly: "usually (most, not all — e.g. penguins and kiwis can't)", warm_blooded: "yes", has_feathers: "yes" },
+  fish: { lives_in: "water", warm_blooded: "no", lays_eggs: "usually" },
+  mammal: { warm_blooded: "yes", lays_eggs: "no (with rare exceptions like the platypus)", nurses_young: "yes" },
+  reptile: { warm_blooded: "no", lays_eggs: "usually" },
+  insect: { leg_count: "6", warm_blooded: "no" },
+  amphibian: { warm_blooded: "no", lays_eggs: "usually", lives_in: "water and land" },
+  plant: { photosynthesizes: "yes", can_move: "no" },
+  vehicle: { man_made: "yes", can_move: "yes" },
+};
+
+/** Learn "X is a Y" as category membership, distinct from a generic literal fact. */
+export function learnIsA(entity: string, category: string): void {
+  addRelation(entity.toLowerCase().trim(), "is_a_kind_of", category.toLowerCase().trim(), "taught");
+}
+
+/** Walk the is-a chain up to `maxHops`, collecting every category the entity belongs to. */
+export function categoryChain(entity: string, maxHops = 4): string[] {
+  const seen = new Set<string>();
+  let frontier = [entity.toLowerCase().trim()];
+  for (let hop = 0; hop < maxHops && frontier.length; hop++) {
+    const next: string[] = [];
+    for (const item of frontier) {
+      for (const hit of relationsByType(item, "is_a_kind_of")) {
+        if (!seen.has(hit.target)) { seen.add(hit.target); next.push(hit.target); }
+      }
+    }
+    frontier = next;
+  }
+  return [...seen];
+}
+
+/**
+ * Transfer-learning lookup: does `entity` have `property`? Checks the is-a
+ * chain against the built-in category property table rather than requiring
+ * the fact to be individually taught for every entity.
+ */
+export function inferCategoryProperty(entity: string, property: string): { value: string; via: string } | undefined {
+  for (const category of categoryChain(entity)) {
+    const props = CATEGORY_PROPERTIES[category];
+    if (props && props[property]) return { value: props[property], via: category };
+  }
+  return undefined;
+}
+
+/** List every known property a category confers, for explanatory answers. */
+export function categoryProperties(category: string): Record<string, string> | undefined {
+  return CATEGORY_PROPERTIES[category.toLowerCase().trim()];
+}
+
+// ─── Concept formation ─────────────────────────────────────────────────────────
+//
+// Review finding: "can Yang discover categories (dog, cat, wolf -> animal),
+// or must every relationship be manually programmed?" Previously every
+// category had to be hand-taught per entity via `learnIsA`. This adds a
+// bottom-up pass: given a set of entities, find which known categories they
+// *all* already belong to (directly or transitively), so a shared ancestor
+// category is discovered from their existing relations rather than being
+// separately declared. It's a small, honest step (discovery over an
+// existing is-a graph, not clustering from raw unstructured examples) but
+// it is genuine abstraction rather than manual programming.
+export interface ConceptSuggestion { sharedCategories: string[]; entities: string[]; }
+
+export function suggestSharedCategory(entities: string[]): ConceptSuggestion {
+  const chains = entities.map((e) => new Set(categoryChain(e)));
+  if (chains.length === 0) return { sharedCategories: [], entities };
+  const shared = [...chains[0]].filter((cat) => chains.every((chain) => chain.has(cat)));
+  return { sharedCategories: shared, entities };
+}

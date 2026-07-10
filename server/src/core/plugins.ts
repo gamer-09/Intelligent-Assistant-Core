@@ -16,7 +16,8 @@ export async function loadPlugins(): Promise<string[]> {
   if (!fs.existsSync(pluginsDir)) return [];
 
   const loaded: string[] = [];
-  for (const entry of fs.readdirSync(pluginsDir)) {
+  const entries = await fs.promises.readdir(pluginsDir);
+  for (const entry of entries) {
     if (!/\.(ts|js)$/.test(entry) || entry.endsWith(".d.ts")) continue;
     try {
       const mod = (await import(path.join(pluginsDir, entry))) as { default?: ToolSpec };

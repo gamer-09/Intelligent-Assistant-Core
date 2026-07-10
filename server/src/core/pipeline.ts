@@ -1,32 +1,29 @@
 /**
- * Modular reasoning pipeline — the explicit orchestration layer replacing
- * "one big switch statement gets called directly from the route handler". Stages:
+ * Modular reasoning pipeline — the explicit orchestration layer the review
+ * asked for, replacing "one big switch statement gets called directly from
+ * the route handler". Stages:
  *
  *   1. context      — load recent turns + rolling summary
- *   2. coref        — resolve pronouns/demonstratives from recent context
- *   3. planning      — split compound requests into ordered subtasks
- *   4. NLU           — regex intent detection, boosted by semantic (BM25)
+ *   2. planning      — split compound requests into ordered subtasks
+ *   3. NLU           — regex intent detection, boosted by semantic (BM25)
  *                      matching when regex confidence is weak
- *   5. generation    — intent handlers
- *   6. reflection    — sanity/contradiction check against known corrections
- *   7. confidence    — combine signals, optionally hedge or ask clarification
+ *   4. generation    — existing intent handlers (now including the new
+ *                      KG / reasoning / web / document / code tools)
+ *   5. reflection    — sanity/contradiction check against known corrections
+ *   6. confidence    — combine signals, optionally hedge the final text
  *
- * Audit improvements:
- *  - Coreference resolution pass before NLU
- *  - Low-confidence path emits a targeted clarifying question instead of
- *    a generic hedge, so users know exactly what to clarify
- *  - Trace now records the coref pass result for explainability
+ * Every stage's output is captured into a `trace` so "how did you get that
+ * answer?" (explainable reasoning) can be answered on request.
  */
 import { detectIntent, type DetectedIntent } from "../nlp/intent-detector.js";
 import { generateResponse } from "../nlp/response-generator.js";
-import { getContext } from "./contextManager.js";
+import { getContext, resolveReference, rememberTopic } from "./contextManager.js";
 import { splitCompoundRequest, stitchAnswers, type SubtaskResult } from "./planner.js";
 import { semanticMatch } from "./semantic.js";
 import { reflect } from "./reflection.js";
 import { combineConfidence, hedge } from "./confidence.js";
 import { observeMessage } from "./userModel.js";
-import { resolveReferences } from "../nlp/coref.js";
-import type { ConversationRow } from "../db/index.js";
+import { getActiveGoal, formatGoal } from "./goals.js";
 
 export interface PipelineTraceStep { stage: string; detail: string; }
 
@@ -40,61 +37,38 @@ export interface PipelineResult {
 
 const lastTraceBySession = new Map<string, PipelineTraceStep[]>();
 
+// Autonomous goal resumption (review §13/§16): previously an active goal
+// just sat in the DB until the user happened to ask about it again — Yang
+// never proactively resurfaced unfinished work. This nudges once per
+// session the next time the user talks to it while a goal is still open,
+// rather than requiring the user to remember and ask.
+const nudgedForGoalThisSession = new Set<string>();
+
 export function getLastTrace(sessionId: string): PipelineTraceStep[] {
   return lastTraceBySession.get(sessionId) ?? [];
 }
 
-// ── Clarifying question generator ────────────────────────────────────────────
+// Below this, guessing produces noise more often than a useful answer —
+// asking a clarifying question is more honest and more useful than a
+// confident-sounding wrong guess (review: "does Yang know when it might be
+// wrong? can it ask clarifying questions?").
+const CLARIFY_THRESHOLD = 0.2;
 
-/**
- * When confidence is very low and all resolution attempts fail, generate a
- * targeted clarifying question rather than a generic "I didn't catch that"
- * message. Uses simple heuristics on the input text.
- */
-function buildClarifyingQuestion(text: string): string {
-  const lower = text.toLowerCase().trim();
-
-  // Question words with no clear subject
-  if (/^(?:why|how|when|where|who|what)\s*\??\s*$/.test(lower)) {
-    return `I'd be happy to help! Could you give me a bit more context? For example: "Why is [something]?", "How does [topic] work?", or "What is [concept]?"`;
+async function runSingle(text: string, sessionId: string, trace: PipelineTraceStep[], contextSummary: string, tavilyApiKey?: string): Promise<{ detected: DetectedIntent; answer: string }> {
+  const ref = resolveReference(sessionId, text);
+  if (ref.resolved) {
+    trace.push({ stage: "reference", detail: `bare follow-up "${text}" resolved to last topic "${ref.topic}"` });
+    text = ref.text;
   }
 
-  // Very short / single word
-  const words = lower.split(/\s+/).filter(Boolean);
-  if (words.length === 1) {
-    const term = words[0];
-    return `I see you typed **"${term}"** — could you give me a bit more context? For example:\n- "What is ${term}?"\n- "Tell me about ${term}"\n- "Calculate ${term}"\n\nOr visit the **Guide** page for the full list of things I can do.`;
-  }
-
-  // Contains a pronoun with no clear referent
-  if (/\b(?:it|that|this|they|them)\b/i.test(lower) && words.length < 5) {
-    return `I'm not sure what you're referring to with "${text.trim()}". Could you be more specific? For example, name the topic directly.`;
-  }
-
-  // Generic clarification with specific suggestions
-  const suggestions = [
-    `**Math**: "What is 15 × 7?"`,
-    `**Knowledge**: "Tell me about France"`,
-    `**Convert**: "Convert 100°F to Celsius"`,
-    `**Teach me**: "Remember that X is Y"`,
-    `**Help**: "What can you do?"`,
-  ];
-  return `I couldn't quite make out what you meant by: *"${text.trim()}"*\n\nCould you rephrase? Here are some things I understand:\n${suggestions.map(s => `• ${s}`).join("\n")}`;
-}
-
-// ── Core single-subtask runner ────────────────────────────────────────────────
-
-async function runSingle(
-  text: string,
-  sessionId: string,
-  trace: PipelineTraceStep[],
-  contextSummary: string,
-  tavilyApiKey?: string
-): Promise<{ detected: DetectedIntent; answer: string }> {
   let detected = detectIntent(text);
   trace.push({ stage: "nlu", detail: `regex intent="${detected.intent}" confidence=${detected.confidence.toFixed(2)}` });
 
-  // Boost/rescue with semantic (BM25) matching when regex confidence is weak
+  // Boost/rescue with semantic (BM25) matching when regex confidence is weak —
+  // this is what lets paraphrases route correctly without a hand-written pattern.
+  // The rolling session summary is folded into the text handed to the
+  // semantic matcher so short follow-ups ("what about the second one?")
+  // can still be routed using earlier topic context, not just the bare turn.
   if (detected.confidence < 0.5) {
     const semanticInput = contextSummary ? `${contextSummary} ${text}` : text;
     const semantic = semanticMatch(semanticInput);
@@ -106,10 +80,15 @@ async function runSingle(
     }
   }
 
-  // Trace intent is handled here to avoid circular imports
+  // "trace" is handled here rather than in response-generator.ts to avoid a
+  // circular import (response-generator would need to import the pipeline
+  // that imports it) and because it needs the *previous* turn's trace.
   let raw: string;
   if (detected.intent === "trace") {
     raw = formatTrace(lastTraceBySession.get(sessionId) ?? []);
+  } else if (detected.confidence < CLARIFY_THRESHOLD && detected.intent !== "general_knowledge" && detected.intent !== "small_talk") {
+    trace.push({ stage: "clarify", detail: `confidence ${detected.confidence.toFixed(2)} below ${CLARIFY_THRESHOLD} — asking instead of guessing` });
+    raw = `I'm not confident I understood that (confidence ${(detected.confidence * 100).toFixed(0)}%). Could you rephrase, or tell me more specifically what you're trying to do? For example: a math expression, a fact to remember, or a question about something I might know.`;
   } else {
     raw = await generateResponse(text, detected, sessionId, tavilyApiKey);
   }
@@ -118,10 +97,17 @@ async function runSingle(
   const reflected = reflect(text, raw);
   if (reflected.flagged) trace.push({ stage: "reflection", detail: reflected.note ?? "flagged" });
 
+  // Remember a concrete "topic" for reference resolution on the *next* turn —
+  // prefer an explicit entity if one was extracted, otherwise fall back to
+  // the raw text itself so "why?" / "continue" have something to latch onto.
+  const topicCandidate = (detected.entities.factKey as string | undefined)
+    ?? (detected.entities.targetText as string | undefined)
+    ?? (detected.entities.topic as string | undefined)
+    ?? (detected.intent !== "trace" && detected.confidence >= CLARIFY_THRESHOLD ? text : undefined);
+  if (topicCandidate) rememberTopic(sessionId, topicCandidate);
+
   return { detected, answer: reflected.text };
 }
-
-// ── Main pipeline entry point ─────────────────────────────────────────────────
 
 export async function runPipeline(text: string, sessionId: string, tavilyApiKey?: string): Promise<PipelineResult> {
   const trace: PipelineTraceStep[] = [];
@@ -129,18 +115,17 @@ export async function runPipeline(text: string, sessionId: string, tavilyApiKey?
   trace.push({ stage: "context", detail: `${context.recent.length} recent turn(s) in window${context.summary ? "; older turns summarized" : ""}` });
   observeMessage(sessionId, text);
 
-  // ── Coreference resolution ────────────────────────────────────────────────
-  // Replace "it", "that", "this" etc. with the referent from recent turns.
-  const recentMessages = context.recent.map((r: ConversationRow) => ({ role: r.role, text: r.text }));
-  const resolved = resolveReferences(text, recentMessages);
-  if (resolved !== text) {
-    trace.push({ stage: "coref", detail: `resolved reference: "${text}" → "${resolved}"` });
+  let goalNudge = "";
+  if (!nudgedForGoalThisSession.has(sessionId)) {
+    const activeGoal = getActiveGoal(sessionId);
+    if (activeGoal && activeGoal.status === "active" && !activeGoal.steps.every((s) => s.done)) {
+      nudgedForGoalThisSession.add(sessionId);
+      goalNudge = `\n\n---\n_By the way, you still have an unfinished goal:_\n${formatGoal(activeGoal)}`;
+      trace.push({ stage: "autonomy", detail: `proactively resurfaced unfinished goal "${activeGoal.title}"` });
+    }
   }
-  // Use the resolved text for all downstream processing
-  const workingText = resolved;
 
-  // ── Planning ──────────────────────────────────────────────────────────────
-  const subtasks = splitCompoundRequest(workingText);
+  const subtasks = splitCompoundRequest(text);
   trace.push({ stage: "planning", detail: subtasks.length > 1 ? `split into ${subtasks.length} subtasks` : "single-step request, no split needed" });
 
   const results: SubtaskResult[] = [];
@@ -156,20 +141,8 @@ export async function runPipeline(text: string, sessionId: string, tavilyApiKey?
 
   const combined = combineConfidence(confidences);
   const stitched = stitchAnswers(results);
-
-  // ── Confidence & response finishing ──────────────────────────────────────
-  let finalText: string;
-  if (subtasks.length > 1) {
-    finalText = stitched;
-  } else if (combined < 0.15 && (primaryDetected?.intent === "unknown")) {
-    // Very low confidence on an unrecognised intent → ask a targeted question
-    // instead of emitting a generic hedge (which users find unhelpful).
-    finalText = buildClarifyingQuestion(workingText);
-    trace.push({ stage: "confidence", detail: `very low confidence (${combined.toFixed(2)}) + unknown intent → clarifying question` });
-  } else {
-    finalText = hedge(stitched, combined);
-    trace.push({ stage: "confidence", detail: `combined confidence=${combined.toFixed(2)}` });
-  }
+  const finalText = (subtasks.length > 1 ? stitched : hedge(stitched, combined)) + goalNudge;
+  trace.push({ stage: "confidence", detail: `combined confidence=${combined.toFixed(2)}` });
 
   lastTraceBySession.set(sessionId, trace);
 

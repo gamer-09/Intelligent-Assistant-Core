@@ -1,5 +1,5 @@
 import type { DetectedIntent } from "./intent-detector.js";
-import { stmts, type ConversationRow, type LearnedFactRow } from "../db/index.js";
+import { stmts, type ConversationRow } from "../db/index.js";
 import {
   teachFact,
   findFactMatch,
@@ -9,7 +9,8 @@ import {
   normalizeQuery,
 } from "./memory.js";
 import { evaluateExpression } from "../core/mathParser.js";
-import { addTaughtFact, relationsFrom, relationsByType } from "../core/knowledgeGraph.js";
+import { addTaughtFact, relationsFrom, relationsByType, learnIsA, inferCategoryProperty, categoryChain, suggestSharedCategory } from "../core/knowledgeGraph.js";
+import { whatHappensIf, compareContainment, learnCausal } from "../core/causalReasoning.js";
 import { learnComparative, isRelated, rankByRelation, resolveSuperlativeWord } from "../core/reasoningChains.js";
 import { bestFactMatch } from "../core/memoryRanking.js";
 import { lookupTopic, formatWebResult } from "../core/webIntel.js";
@@ -18,7 +19,6 @@ import { indexDocumentFile, searchDocuments, listIndexedDocuments, DOCS_ROOT } f
 import { findSymbol } from "../core/codeIntel.js";
 import { startGoal, getActiveGoal, completeStep, formatGoal } from "../core/goals.js";
 import { formatToolList } from "../core/tools.js";
-import { getLastTopic, getLastUserQuery, getLastAssistantResponse } from "../core/contextManager.js";
 import path from "path";
 
 // Session-scoped in-memory state
@@ -111,53 +111,21 @@ function convertWeight(value: number, from: string, to: string): string {
 const GEO: Record<string, string> = {
   france:"France is a country in Western Europe. Capital: Paris. Population: ~68M. Most visited country in the world.",
   germany:"Germany is in Central Europe. Capital: Berlin. Population: ~84M. Largest economy in the EU.",
-  japan:"Japan is an island nation in East Asia. Capital: Tokyo. Population: ~125M. Known for technology, anime, and sushi.",
+  japan:"Japan is an island nation in East Asia. Capital: Tokyo. Population: ~125M.",
   usa:"The United States. Capital: Washington D.C. Population: ~335M. World's largest economy by nominal GDP.",
   "united states":"The United States. Capital: Washington D.C. Population: ~335M.",
-  uk:"The United Kingdom. Capital: London. Population: ~68M. Comprises England, Scotland, Wales, and Northern Ireland.",
+  uk:"The United Kingdom. Capital: London. Population: ~68M.",
   "united kingdom":"The United Kingdom. Capital: London. Population: ~68M.",
-  canada:"Canada is the second-largest country by area. Capital: Ottawa. Population: ~40M. Bilingual (English/French).",
-  australia:"Australia is both a country and a continent. Capital: Canberra. Population: ~26M. Home to the Great Barrier Reef.",
-  china:"China. Capital: Beijing. Population: ~1.4B. World's second-largest GDP. Oldest continuous civilisation.",
+  canada:"Canada is the second-largest country by area. Capital: Ottawa. Population: ~40M.",
+  australia:"Australia is both a country and a continent. Capital: Canberra. Population: ~26M.",
+  china:"China. Capital: Beijing. Population: ~1.4B. World's second-largest GDP.",
   india:"India is the world's most populous country (~1.44B). Capital: New Delhi. World's largest democracy.",
-  brazil:"Brazil is the largest country in South America. Capital: Brasília. Population: ~216M. Largest rainforest in the world.",
+  brazil:"Brazil is the largest country in South America. Capital: Brasília. Population: ~216M.",
   russia:"Russia is the world's largest country by area. Capital: Moscow. Spans 11 time zones.",
-  italy:"Italy is in southern Europe. Capital: Rome. Population: ~60M. Known for art, architecture, and cuisine.",
-  spain:"Spain is in southwestern Europe. Capital: Madrid. Population: ~47M. Famous for flamenco and football.",
-  mexico:"Mexico is in North America. Capital: Mexico City. Population: ~130M. Ancient Aztec and Maya civilisations.",
-  argentina:"Argentina is in southern South America. Capital: Buenos Aires. Population: ~46M. Tango and Messi's homeland.",
-  "south africa":"South Africa is at the tip of the African continent. Capital: Pretoria. Population: ~60M. Known for the Kruger National Park.",
-  egypt:"Egypt is in North Africa. Capital: Cairo. Population: ~104M. Home to the ancient pyramids and Sphinx.",
-  nigeria:"Nigeria is the most populous country in Africa (~220M). Capital: Abuja. Largest economy in Africa.",
-  kenya:"Kenya is in East Africa. Capital: Nairobi. Population: ~55M. Known for wildlife safaris and the Maasai Mara.",
-  thailand:"Thailand is in Southeast Asia. Capital: Bangkok. Population: ~72M. Known for temples, beaches, and cuisine.",
-  indonesia:"Indonesia is the world's largest archipelago (17,000+ islands). Capital: Jakarta. Population: ~274M.",
-  "south korea":"South Korea is in East Asia. Capital: Seoul. Population: ~52M. Home of K-pop, Samsung, and Hyundai.",
-  pakistan:"Pakistan is in South Asia. Capital: Islamabad. Population: ~230M.",
-  "new zealand":"New Zealand is in the South Pacific. Capital: Wellington. Population: ~5M. Famous for LOTR filming locations.",
-  sweden:"Sweden is in Northern Europe. Capital: Stockholm. Population: ~10M. Known for IKEA, Volvo, and ABBA.",
-  norway:"Norway is in Northern Europe. Capital: Oslo. Population: ~5.4M. Consistently ranks highest in happiness indices.",
-  denmark:"Denmark is in Northern Europe. Capital: Copenhagen. Population: ~5.9M. Birthplace of LEGO.",
-  finland:"Finland is in Northern Europe. Capital: Helsinki. Population: ~5.5M. World's happiest country (multiple years).",
-  netherlands:"The Netherlands is in Western Europe. Capital: Amsterdam. Population: ~17.5M. Famous for tulips, windmills, and cycling.",
-  portugal:"Portugal is in southwestern Europe. Capital: Lisbon. Population: ~10.3M. First global maritime empire.",
-  greece:"Greece is in southeastern Europe. Capital: Athens. Population: ~10.4M. Birthplace of democracy and the Olympics.",
-  turkey:"Turkey spans Europe and Asia. Capital: Ankara. Population: ~85M. Famous for the Bosphorus and Hagia Sophia.",
-  poland:"Poland is in Central Europe. Capital: Warsaw. Population: ~38M. Largest economy in Central Europe.",
-  "saudi arabia":"Saudi Arabia is in the Middle East. Capital: Riyadh. Population: ~36M. World's largest oil exporter.",
-  "united arab emirates":"The UAE is in the Middle East. Capital: Abu Dhabi. Population: ~10M. Home to the world's tallest building, the Burj Khalifa.",
-  israel:"Israel is in the Middle East. Capital: Jerusalem. Population: ~9.8M. One of the world's most advanced tech hubs.",
-  singapore:"Singapore is a city-state in Southeast Asia. Population: ~5.9M. One of the world's most prosperous countries.",
-  switzerland:"Switzerland is in Central Europe. Capital: Bern. Population: ~8.8M. Known for banking, chocolate, and neutrality.",
-  ukraine:"Ukraine is in Eastern Europe. Capital: Kyiv. Population: ~44M. Largest country entirely within Europe.",
-  ethiopia:"Ethiopia is in East Africa. Capital: Addis Ababa. Population: ~120M. Oldest independent African nation.",
-  colombia:"Colombia is in South America. Capital: Bogotá. Population: ~52M. Famous for coffee and emeralds.",
-  ghana:"Ghana is in West Africa. Capital: Accra. Population: ~34M. First sub-Saharan country to gain independence (1957).",
 };
 
 const CAPITALS: Record<string, string> = {
   france:"Paris",germany:"Berlin",japan:"Tokyo",usa:"Washington D.C.","united states":"Washington D.C.",uk:"London","united kingdom":"London",canada:"Ottawa",australia:"Canberra",china:"Beijing",india:"New Delhi",brazil:"Brasília",russia:"Moscow",italy:"Rome",spain:"Madrid",mexico:"Mexico City",argentina:"Buenos Aires","south africa":"Pretoria",egypt:"Cairo",nigeria:"Abuja",kenya:"Nairobi",thailand:"Bangkok",indonesia:"Jakarta","south korea":"Seoul",pakistan:"Islamabad","new zealand":"Wellington",sweden:"Stockholm",norway:"Oslo",denmark:"Copenhagen",finland:"Helsinki",netherlands:"Amsterdam",portugal:"Lisbon",greece:"Athens",turkey:"Ankara",poland:"Warsaw",
-  "saudi arabia":"Riyadh","united arab emirates":"Abu Dhabi",uae:"Abu Dhabi",israel:"Jerusalem",singapore:"Singapore",switzerland:"Bern",ukraine:"Kyiv",ethiopia:"Addis Ababa",colombia:"Bogotá",ghana:"Accra",peru:"Lima",chile:"Santiago","czech republic":"Prague",czechia:"Prague",hungary:"Budapest",romania:"Bucharest",austria:"Vienna",belgium:"Brussels",ireland:"Dublin",vietnam:"Hanoi",philippines:"Manila",malaysia:"Kuala Lumpur",bangladesh:"Dhaka","sri lanka":"Colombo",nepal:"Kathmandu",iran:"Tehran",iraq:"Baghdad",jordan:"Amman",qatar:"Doha",oman:"Muscat",libya:"Tripoli",algeria:"Algiers",morocco:"Rabat",tunisia:"Tunis",sudan:"Khartoum",tanzania:"Dodoma",zambia:"Lusaka",zimbabwe:"Harare",angola:"Luanda",rwanda:"Kigali",uganda:"Kampala",mozambique:"Maputo",iceland:"Reykjavik",croatia:"Zagreb",serbia:"Belgrade",albania:"Tirana",slovakia:"Bratislava",slovenia:"Ljubljana",estonia:"Tallinn",latvia:"Riga",lithuania:"Vilnius",belarus:"Minsk",georgia:"Tbilisi",armenia:"Yerevan",azerbaijan:"Baku",afghanistan:"Kabul",taiwan:"Taipei",venezuela:"Caracas",ecuador:"Quito",bolivia:"Sucre",paraguay:"Asunción",uruguay:"Montevideo",cuba:"Havana",jamaica:"Kingston",haiti:"Port-au-Prince","dominican republic":"Santo Domingo","costa rica":"San José",panama:"Panama City","el salvador":"San Salvador",nicaragua:"Managua",honduras:"Tegucigalpa",guatemala:"Guatemala City",
 };
 
 const DEFINITIONS: Record<string, string> = {
@@ -173,70 +141,18 @@ const DEFINITIONS: Record<string, string> = {
   "open source":"**Open source** software has publicly available source code — anyone can view, use, modify, and distribute it.",
   recursion:"**Recursion** is when a function calls itself to solve a smaller version of the same problem.",
   variable:"A **variable** is a named container in programming that stores a value which can change as the program runs.",
-  // New additions
-  "object-oriented":"**Object-Oriented Programming (OOP)** organises code around *objects* — bundles of data and behaviour — making code more modular and reusable.",
-  oop:"**Object-Oriented Programming (OOP)** organises code around *objects* — bundles of data and behaviour — making code more modular and reusable.",
-  "functional programming":"**Functional programming** treats computation as the evaluation of mathematical functions, avoiding shared state and mutable data.",
-  "big o":"**Big-O notation** describes how an algorithm's runtime or space usage grows as its input size increases (e.g. O(n) = linear, O(n²) = quadratic).",
-  cache:"A **cache** stores frequently accessed data in fast memory so future requests are served faster. The trade-off is memory vs. speed.",
-  concurrency:"**Concurrency** means multiple tasks make progress at the same time by interleaving execution — distinct from true parallelism.",
-  parallelism:"**Parallelism** means multiple tasks literally execute simultaneously on multiple CPU cores, unlike concurrency which interleaves.",
-  "rest api":"A **REST API** (Representational State Transfer) exposes resources via standard HTTP verbs (GET, POST, PUT, DELETE) with stateless requests.",
-  tcp:"**TCP** (Transmission Control Protocol) is a reliable, connection-oriented protocol that ensures all packets arrive in order.",
-  "tcp/ip":"**TCP/IP** is the foundational communication protocol of the internet — TCP ensures delivery, IP handles addressing and routing.",
-  dns:"**DNS** (Domain Name System) translates human-readable domain names (e.g. google.com) into IP addresses computers can route to.",
-  "ip address":"An **IP address** is a unique numerical label assigned to each device on a network, enabling routing of traffic.",
-  "binary":"**Binary** is the base-2 numeral system using only 0s and 1s — the fundamental language of all digital computers.",
-  bit:"A **bit** is the smallest unit of data in computing — a single 0 or 1.",
-  byte:"A **byte** is 8 bits. Files, memory, and storage are measured in bytes, kilobytes, megabytes, gigabytes, etc.",
-  compiler:"A **compiler** translates high-level source code (e.g. C++) into machine code before the program runs.",
-  interpreter:"An **interpreter** executes source code line by line at runtime (e.g. Python, JavaScript in browsers).",
-  os:"An **operating system (OS)** manages hardware and provides services for programs — examples: Windows, macOS, Linux.",
-  git:"**Git** is a distributed version control system that tracks code changes and enables collaboration via branches, commits, and merges.",
-  "version control":"**Version control** systems (e.g. Git) track changes to files over time so you can revert, branch, and collaborate.",
-  docker:"**Docker** packages software into **containers** — isolated, portable environments that run consistently anywhere.",
-  kubernetes:"**Kubernetes** (K8s) automates deployment, scaling, and management of containerised applications across clusters.",
-  cpu:"The **CPU** (Central Processing Unit) is the primary processor — it executes instructions and performs calculations.",
-  gpu:"The **GPU** (Graphics Processing Unit) excels at parallel computation — originally for graphics, now essential for AI/ML.",
-  ram:"**RAM** (Random Access Memory) is fast, temporary memory used while a program runs. Data is lost when powered off.",
-  sql:"**SQL** (Structured Query Language) is the standard language for querying and manipulating relational databases.",
-  nosql:"**NoSQL** databases store data in non-tabular formats (documents, key-value, graph) and scale horizontally with ease.",
-  typescript:"**TypeScript** is a typed superset of JavaScript that compiles to plain JS — it adds static typing and modern features.",
-  python:"**Python** is a high-level, readable programming language widely used for data science, AI, web development, and scripting.",
-  javascript:"**JavaScript** is the language of the web — it runs in browsers and (via Node.js) on servers to power interactivity.",
 };
 
 const INVENTIONS: Record<string, string> = {
-  "world wide web":"Tim Berners-Lee invented the World Wide Web in 1989 at CERN.",
+  "world wide web":"Tim Berners-Lee invented the World Wide Web in 1989.",
   internet:"The internet evolved from ARPANET, developed by the US Department of Defense in the 1960s.",
   telephone:"Alexander Graham Bell is credited with inventing the telephone in 1876.",
   "light bulb":"Thomas Edison developed a practical incandescent light bulb in 1879.",
-  airplane:"The Wright Brothers (Orville and Wilbur) made the first powered flight at Kitty Hawk in 1903.",
-  computer:"Charles Babbage conceptualised the first mechanical computer; ENIAC (1945) was one of the first electronic computers.",
-  penicillin:"Alexander Fleming discovered penicillin in 1928, revolutionising medicine and saving millions of lives.",
-  gravity:"Isaac Newton formulated the law of universal gravitation in 1687 (reportedly inspired by a falling apple).",
-  relativity:"Albert Einstein developed special relativity (1905) and general relativity (1915), reshaping our understanding of space and time.",
-  // New additions
-  steam_engine:"James Watt significantly improved the steam engine in 1769, powering the Industrial Revolution.",
-  "steam engine":"James Watt significantly improved the steam engine in 1769, powering the Industrial Revolution.",
-  printing:"Johannes Gutenberg invented the movable-type printing press around 1440, democratising knowledge.",
-  "printing press":"Johannes Gutenberg invented the movable-type printing press around 1440, democratising knowledge.",
-  television:"Philo Farnsworth demonstrated the first electronic television in 1927.",
-  radio:"Guglielmo Marconi demonstrated the first long-distance radio transmission in 1901.",
-  vaccine:"Edward Jenner created the first successful vaccine (smallpox) in 1796.",
-  gps:"The GPS system was developed by the US Department of Defense and became fully operational in 1995.",
-  laser:"Theodore Maiman built the first working laser in 1960.",
-  transistor:"The transistor was invented at Bell Labs by Shockley, Bardeen, and Brattain in 1947 — the foundation of modern electronics.",
-  microchip:"Jack Kilby (Texas Instruments) and Robert Noyce (Fairchild) independently invented the integrated circuit (microchip) in 1958–59.",
-  "integrated circuit":"Jack Kilby and Robert Noyce invented the integrated circuit in 1958–59.",
-  nuclear:"Nuclear fission was discovered by Hahn and Strassmann in 1938. The first nuclear reactor was built by Fermi in 1942.",
-  rna:"mRNA vaccine technology was pioneered by Katalin Karikó and Drew Weissman, recognised by the 2023 Nobel Prize in Medicine.",
-  python:"Python was created by Guido van Rossum, with its first version released in 1991.",
-  linux:"Linux was created by Linus Torvalds in 1991 as a free, open-source Unix-like operating system.",
-  wikipedia:"Wikipedia was founded by Jimmy Wales and Larry Sanger in 2001.",
-  electricity:"Benjamin Franklin demonstrated lightning as electricity (1752); practical generation/distribution by Faraday and Tesla/Edison in the 1800s.",
-  evolution:"Charles Darwin and Alfred Russel Wallace independently developed the theory of evolution by natural selection (~1858).",
-  dna:"The structure of DNA was discovered by Watson and Crick in 1953, building on X-ray work by Rosalind Franklin.",
+  airplane:"The Wright Brothers (Orville and Wilbur) made the first powered flight in 1903.",
+  computer:"Charles Babbage conceptualised the first computer; ENIAC (1945) was one of the first electronic computers.",
+  penicillin:"Alexander Fleming discovered penicillin in 1928.",
+  gravity:"Isaac Newton formulated the law of universal gravitation in 1687.",
+  relativity:"Albert Einstein developed special relativity (1905) and general relativity (1915).",
 };
 
 const JOKES = [
@@ -250,20 +166,6 @@ const JOKES = [
   "Why did the bicycle fall over?\nBecause it was two-tired.",
   "What's a computer's favorite snack?\nMicrochips.",
   "What did the ocean say to the beach?\nNothing, it just waved.",
-  "Why can't you trust an atom?\nThey make up literally everything.",
-  "What do you call a group of disorganised cats?\nA cat-astrophe.",
-  "I tried to write a joke about infinity.\nBut I didn't know where to stop.",
-  "Why was the developer always calm?\nBecause they knew how to handle exceptions.",
-  "There are 10 types of people in the world:\nThose who understand binary and those who don't.",
-  "Why did the function call itself?\nBecause it had unresolved issues.",
-  "How many programmers does it take to change a light bulb?\nNone — that's a hardware problem.",
-  "A SQL query walks into a bar, walks up to two tables and asks...\n'Can I join you?'",
-  "Why is it so hard to play hide-and-seek with mountains?\nBecause they always peak.",
-  "I asked my dog what 2 minus 2 is.\nHe said nothing.",
-  "I used to think I was indecisive.\nBut now I'm not so sure.",
-  "Why do cows wear bells?\nBecause their horns don't work.",
-  "What do you call a fake noodle?\nAn impasta.",
-  "Did you hear about the claustrophobic astronaut?\nHe just needed a little space.",
 ];
 
 // ─── Main generator ───────────────────────────────────────────────────────────
@@ -281,6 +183,13 @@ export async function generateResponse(text: string, detected: DetectedIntent, s
     const prior = findCorrection(text);
     if (prior) return prior.correct_answer;
   }
+
+  // Transfer-learning question check: "do kiwis lay eggs?" / "does a shark
+  // lay eggs?" / "is a whale warm blooded?" — answered by walking the is-a
+  // chain against known category properties (see inferCategoryProperty),
+  // rather than requiring every individual fact to have been taught.
+  const transferAnswer = tryAnswerFromCategoryTransfer(lower);
+  if (transferAnswer) return transferAnswer;
 
   switch (intent) {
     case "teach": return handleTeach(entities);
@@ -311,11 +220,43 @@ export async function generateResponse(text: string, detected: DetectedIntent, s
     case "web_research": return await handleWebResearch(entities, tavilyApiKey);
     case "document": return await handleDocument(entities);
     case "code_lookup": return handleCodeLookup(entities);
-    case "follow_up": return await handleFollowUp(sessionId, tavilyApiKey);
-    case "opinion": return handleOpinion(lower);
-    case "hypothetical": return handleHypothetical(lower);
     default: return await handleFallback(lower, text, tavilyApiKey);
   }
+}
+
+// ─── Category-transfer question answering ──────────────────────────────────────
+
+const PROPERTY_PHRASES: Array<{ pattern: RegExp; property: string }> = [
+  { pattern: /lay(?:s)?\s+eggs?/, property: "lays_eggs" },
+  { pattern: /\bfly\b|\bflies\b/, property: "can_fly" },
+  { pattern: /warm.?blooded/, property: "warm_blooded" },
+  { pattern: /feathers?/, property: "has_feathers" },
+  { pattern: /nurse|produce milk|milk\s+(?:their|its)\s+young/, property: "nurses_young" },
+  { pattern: /photosynthesi[sz]e/, property: "photosynthesizes" },
+  { pattern: /live\s+in\s+water|swim|underwater/, property: "lives_in" },
+  { pattern: /move\s+(?:on\s+its\s+own|by\s+itself)/, property: "can_move" },
+  { pattern: /how\s+many\s+legs/, property: "leg_count" },
+];
+
+/**
+ * Answers "do kiwis lay eggs?"-style questions via category-property
+ * inheritance (see `inferCategoryProperty`) instead of requiring the exact
+ * sentence to have been taught. Singularizes a trailing "s" heuristically
+ * ("kiwis" -> "kiwi") since taught entities are stored singular.
+ */
+function tryAnswerFromCategoryTransfer(lower: string): string | undefined {
+  const m = lower.match(/^(?:do|does|is|are|can)\s+(?:a\s+|an\s+|the\s+)?([a-z][a-z\s]*?)\s+(.+?)\??$/);
+  if (!m) return undefined;
+  let subject = m[1].trim();
+  const rest = m[2].trim();
+  const propertyHit = PROPERTY_PHRASES.find((p) => p.pattern.test(rest));
+  if (!propertyHit) return undefined;
+  if (subject.endsWith("s") && !subject.endsWith("ss")) subject = subject.slice(0, -1);
+  const chain = categoryChain(subject);
+  if (chain.length === 0) return undefined; // no known category membership — let normal handling take over
+  const inferred = inferCategoryProperty(subject, propertyHit.property);
+  if (!inferred) return undefined;
+  return `Based on **${subject}** being a kind of **${inferred.via}**: ${inferred.value}. (Inferred from category membership, not a directly taught fact.)`;
 }
 
 // ─── Internet lookup (Tavily) ──────────────────────────────────────────────────
@@ -494,25 +435,25 @@ function handleTeach(entities: Record<string, unknown>): string {
   if (!key || !value) {
     return "Tell me what to remember in the form: **\"Remember that <thing> is <fact>\"** — e.g. \"Remember that my favorite color is blue.\"";
   }
+  const { contradicted, previousValue } = teachFact(key, value);
+  addTaughtFact(key, value); // also record in the knowledge graph for multi-hop traversal
 
-  // Contradiction detection: check whether we already have a different value
-  // for this key. Must use normalizeQuery (same path as storage) so that
-  // spacing/punctuation variants ("my cat" vs "my  cat") still match.
-  const existing = stmts.getFact.get(normalizeQuery(key)) as unknown as LearnedFactRow | undefined;
-  if (existing && existing.value.toLowerCase() !== value.toLowerCase()) {
-    teachFact(key, value);
-    addTaughtFact(key, value);
-    return `✓ Updated — I had **"${existing.value}"** stored for **${key}**, but I've now updated it to **"${value}"**. If that wasn't intentional, teach me the old value again.`;
+  // Transfer learning: "kiwi is a bird" is category membership, not just a
+  // string fact — recording it as `is_a_kind_of` lets later questions like
+  // "do kiwis lay eggs?" be answered by inheritance instead of requiring
+  // that exact fact to be taught separately (see inferCategoryProperty).
+  const categoryM = value.match(/^(?:an?|the)\s+([a-z][a-z\s]*)$/i);
+  let transferNote = "";
+  if (categoryM) {
+    const category = categoryM[1].trim().toLowerCase();
+    learnIsA(key, category);
+    transferNote = ` I'll also treat **${key}** as a kind of **${category}**, so I can infer things ${category}s typically have without being told separately.`;
   }
 
-  teachFact(key, value);
-  addTaughtFact(key, value); // also record in the knowledge graph for multi-hop traversal
-  const confirmations = [
-    `✓ Got it — I'll remember that **${key}** is **${value}**. Ask me about it any time!`,
-    `✓ Noted! **${key}** → **${value}**. I'll recall this whenever you ask.`,
-    `✓ Remembered: **${key}** is **${value}**. You can correct me any time if it changes.`,
-  ];
-  return confirmations[Math.floor(Math.random() * confirmations.length)];
+  if (contradicted) {
+    return `⚠️ You previously told me **${key}** is **${previousValue}** — I've updated it to **${value}**.${transferNote} Let me know if that was a mistake.`;
+  }
+  return `✓ Got it — I'll remember that **${key}** is **${value}**.${transferNote} Ask me about it any time and I'll recall it.`;
 }
 
 function handleCorrect(entities: Record<string, unknown>, sessionId: string): string {
@@ -545,6 +486,45 @@ function handleCorrect(entities: Record<string, unknown>, sessionId: string): st
 }
 
 function handleReasoning(text: string, lower: string): string {
+  // Common-sense causal reasoning: "if I put ice in the sun, what happens?",
+  // "what happens if I drop a glass?", "why does ice melt in the sun?" —
+  // answered by tracing cause -> effect over a small built-in world model
+  // (see causalReasoning.ts) instead of requiring a hand-written rule per
+  // exact question.
+  const hypotheticalM = lower.match(/(?:if\s+i\s+|if\s+you\s+)?(.+?)\s*,?\s*what\s+(?:happens|would\s+happen)/i)
+    ?? lower.match(/^why\s+(?:does|do|might|would)\s+(.+?)(?:\?|$)/i)
+    ?? lower.match(/^why\s+(?:might\s+)?(.+?)\s+(?:break|melt|rust|spoil|shatter)(?:\?|$)/i);
+  if (hypotheticalM) {
+    const cause = hypotheticalM[1].trim();
+    const hits = whatHappensIf(cause);
+    if (hits.length > 0) {
+      const lines = hits.map((h) => `${h.effect}${h.because ? ` — because ${h.because}` : ""}`);
+      return `Reasoning from cause to effect:\n${lines.map((l) => `- ${l}`).join("\n")}\n\n(This is inferred from a stored cause → effect relationship, not a scripted answer to this exact sentence.)`;
+    }
+  }
+
+  // Concept formation: "what do a dog, a cat and a wolf have in common?" —
+  // discovered from shared category membership already in the graph rather
+  // than a hand-written rule for this specific trio (see suggestSharedCategory).
+  const commonM = lower.match(/what\s+do\s+(.+?)\s+have\s+in\s+common/i);
+  if (commonM) {
+    const entities = commonM[1].split(/,|\band\b/i).map((e) => e.replace(/^an?\s+|^the\s+/i, "").trim()).filter(Boolean);
+    if (entities.length >= 2) {
+      const { sharedCategories } = suggestSharedCategory(entities);
+      if (sharedCategories.length > 0) {
+        return `${entities.join(", ")} are all a kind of **${sharedCategories.join(", ")}** — discovered from the categories I already know each of them belongs to, not a rule written specifically for this group.`;
+      }
+      return `I don't yet know a shared category for ${entities.join(", ")} — I only know categories that have been explicitly taught (e.g. "a dog is a mammal"), so if none of these have been taught a category yet, I can't discover one.`;
+    }
+  }
+
+  // Size/containment common sense: "can an elephant fit inside a backpack?"
+  const fitM = lower.match(/can\s+an?\s+(.+?)\s+fit\s+(?:inside|in)\s+an?\s+(.+?)(?:\?|$)/i);
+  if (fitM) {
+    const result = compareContainment(fitM[1].trim(), fitM[2].trim());
+    if (result) return `${result.fits ? "Yes" : "No"} — ${result.reason}.`;
+  }
+
   const topicM = lower.match(/^(?:why|how\s+come)\s+(?:is|are|does|do|did)\s+(.+?)(?:\?|$)/i)
     ?? lower.match(/explain\s+(?:why|how)\s+(.+?)(?:\?|$)/i);
   const topic = topicM?.[1]?.trim();
@@ -738,60 +718,18 @@ function handleWordGame(lower: string): string {
 }
 
 async function handleFallback(lower: string, original: string, tavilyApiKey?: string): Promise<string> {
-  // ── Common social phrases ───────────────────────────────────────────────
-  if (/thank(?:s|\s+you)/i.test(lower)) {
-    const picks = ["You're welcome! Anything else I can help with?", "Happy to help! What else?", "Of course — what's next?"];
-    return picks[Math.floor(Math.random() * picks.length)];
-  }
-  if (/(?:you'?re?\s+)?(?:amazing|awesome|great|well\s+done|nice\s+job|good\s+job)/i.test(lower)) {
-    const picks = ["Thank you! What else can I do for you?", "Glad that helped! Anything else?", "Appreciate it! What next?"];
-    return picks[Math.floor(Math.random() * picks.length)];
-  }
-  if (/(?:sorry|apolog)/i.test(lower)) return "No need to apologise! What can I help you with?";
-  if (/(?:cool|nice|wow|interesting|fascinating)/i.test(lower)) return "Glad you found that interesting! Anything else you'd like to explore?";
+  if (/thank(?:s|\s+you)/i.test(lower)) return "You're welcome! Anything else I can help with?";
+  if (/(?:you'?re?\s+)?(?:amazing|awesome|great|well\s+done)/i.test(lower)) return "Thank you! What else can I do for you?";
 
-  // ── Try math as a bare expression ─────────────────────────────────────
   const r = safeMath(original.replace(/[^0-9+\-*/().% ]/g,""));
   if (r !== null) return `= **${fmt(r)}**`;
 
-  // ── Try to extract a topic and look it up locally before giving up ─────
-  const topicWords = lower
-    .replace(/^(?:what|who|where|when|why|how|tell|give|show|can you|do you know|i want to know|i was wondering)\b/gi,"")
-    .replace(/[?!.]+$/g,"")
-    .trim();
-
-  if (topicWords.length > 2) {
-    // Check taught facts
-    const taught = findFactMatch(topicWords);
-    if (taught) return `**${taught.key}** is **${taught.value}** (you taught me this).`;
-
-    // Check GEO
-    for (const [k, v] of Object.entries(GEO)) { if (topicWords.includes(k) || k.includes(topicWords)) return v; }
-
-    // Check DEFINITIONS
-    for (const [k, v] of Object.entries(DEFINITIONS)) { if (topicWords.includes(k) || k.includes(topicWords)) return v; }
-
-    // Check INVENTIONS
-    for (const [k, v] of Object.entries(INVENTIONS)) { if (topicWords.includes(k) || k.includes(topicWords)) return v; }
-
-    // Try Wikipedia (free, no key needed) before giving the generic message
-    try {
-      const wiki = await lookupTopic(topicWords);
-      if (wiki) return `Here's what I found:\n\n${formatWebResult(wiki)}`;
-    } catch { /* silent — network may not be available */ }
-  }
-
   // Nothing local matched at all — if the user has given us a Tavily key,
-  // reach for the live web rather than just shrugging.
+  // this is the best place to reach for the live web rather than just
+  // shrugging, since every built-in intent handler has already had its shot.
   if (tavilyApiKey) return await handleTavilySearch(original, tavilyApiKey);
 
-  // Targeted "I don't know" message that names the topic and offers a path forward
-  if (topicWords.length > 2) {
-    noteResearchGap(topicWords);
-    return `I don't have information on **"${topicWords}"** yet — I've logged it as a gap.\n\nYou can:\n• Teach me: **"Remember that ${topicWords} is ..."**\n• Paste a **Tavily API key** above the chat to let me search the web\n• Visit the **Guide** page for things I already know`;
-  }
-
-  return `I didn't quite catch that. Try:\n- **Math**: "What is 15 * 7?"\n- **Date**: "What day is it?"\n- **Convert**: "Convert 100°F to Celsius"\n- **Knowledge**: "Tell me about Japan"\n- **Help**: "What can you do?"\n- Paste a Tavily API key above the chat and I can search the live web for anything else.`;
+  return `I didn't quite catch that. Try:\n- **Math**: "What is 15 * 7?"\n- **Date**: "What day is it?"\n- **Convert**: "Convert 100°F to Celsius"\n- **Help**: "What can you do?"\n- Paste a Tavily API key above the chat and I can search the live web for anything else.`;
 }
 
 // ─── Comparative reasoning / goals / web / documents / code ───────────────────
@@ -799,6 +737,9 @@ async function handleFallback(lower: string, original: string, tavilyApiKey?: st
 function handleComparativeTeach(text: string): string {
   const learned = learnComparative(text.trim());
   if (!learned) return "I couldn't parse that as a comparison. Try: **\"John is older than Sarah.\"**";
+  if (learned.contradiction) {
+    return `⚠️ Noted: **${learned.subject}** ${learned.relation.replace("_", " ")} **${learned.object}**. ${learned.contradiction} I've stored your latest statement, but you may want to correct one of them.`;
+  }
   return `✓ Noted: **${learned.subject}** ${learned.relation.replace("_", " ")} **${learned.object}**. I can now reason about this transitively — ask me "who is oldest?" or "is X older than Y?".`;
 }
 
@@ -889,107 +830,4 @@ function handleCodeLookup(entities: Record<string, unknown>): string {
   const hits = findSymbol(name, root);
   if (hits.length === 0) return `No symbol matching **"${name}"** found under the code index (scanned from ${root}).`;
   return `Found ${hits.length} match${hits.length !== 1 ? "es" : ""} for **"${name}"**:\n\n${hits.slice(0, 8).map((h) => `• **${h.name}** (${h.kind}) — ${path.relative(process.cwd(), h.file)}:${h.line}\n  \`${h.signature}\``).join("\n")}`;
-}
-
-// ─── Follow-up, opinion, hypothetical ────────────────────────────────────────
-
-/**
- * Handles "tell me more / elaborate / go on / more details" after any previous
- * response. Resolves the last topic the user asked about, tries Wikipedia for
- * deeper content, and falls back gracefully with a specific suggestion.
- *
- * This was the #1 audit finding: Yang gave no useful response to the most
- * natural conversational follow-up.
- */
-async function handleFollowUp(sessionId: string, tavilyApiKey?: string): Promise<string> {
-  const lastQuery = getLastUserQuery(sessionId);
-  const lastResponse = getLastAssistantResponse(sessionId);
-  const topic = getLastTopic(sessionId);
-
-  if (!lastQuery && !topic) {
-    return "I'd be happy to tell you more — what topic would you like me to expand on?";
-  }
-
-  // If the last query was itself a follow-up, avoid infinite loop by using
-  // the topic extraction rather than re-running the same query.
-  if (topic) {
-    // Check if we have any facts related to this topic
-    const allFacts = stmts.listFacts.all() as unknown as LearnedFactRow[];
-    const relatedFacts = allFacts.filter(
-      (f) => f.key.toLowerCase().includes(topic) || topic.includes(f.key.toLowerCase())
-    );
-
-    // Try Wikipedia for deeper information
-    try {
-      const wiki = await lookupTopic(topic);
-      if (wiki) {
-        const extra = relatedFacts.length
-          ? `\n\nFrom what you've taught me: ${relatedFacts.map((f) => `**${f.key}** → ${f.value}`).join("; ")}`
-          : "";
-        return `Expanding on **${topic}**:\n\n${formatWebResult(wiki)}${extra}`;
-      }
-    } catch { /* network may not be available */ }
-
-    // No Wikipedia result — try Tavily
-    if (tavilyApiKey) {
-      return await handleTavilySearch(`more information about ${topic}`, tavilyApiKey);
-    }
-
-    // Only local facts
-    if (relatedFacts.length > 0) {
-      return `Here's everything I have on **${topic}**:\n\n${relatedFacts.map((f) => `• **${f.key}**: ${f.value}`).join("\n")}\n\nTo get deeper information, paste a Tavily API key above to let me search the web.`;
-    }
-
-    // Nothing at all
-    noteResearchGap(topic);
-    return `I don't have more to add on **${topic}** beyond what I shared. I've noted it as a gap — you can teach me with **"Remember that ${topic} is ..."** or paste a Tavily key to search the web.`;
-  }
-
-  return "Could you clarify what you'd like more of? For example: **\"Tell me more about Japan\"** or **\"Elaborate on recursion\"**.";
-}
-
-/**
- * Opinion questions ("what do you think / do you prefer / which is better").
- * Yang is transparent about not having personal opinions while still being
- * helpful — it shares facts that may inform the user's own view.
- */
-function handleOpinion(lower: string): string {
-  const opinions: string[] = [
-    "I don't hold personal preferences — but I can share facts that might help you decide! What specifically would you like to know more about?",
-    "As an AI, I don't have opinions, but I can give you relevant facts or compare options if you tell me what you're choosing between.",
-    "I'm opinion-free, but very fact-full! Tell me what you're weighing up and I'll share what I know.",
-  ];
-  // Try to extract the subject
-  const subjectM = lower.match(/(?:think about|prefer|opinion on|view on|take on)\s+(.+?)(?:\?|$)/i);
-  if (subjectM) {
-    const subject = subjectM[1].trim();
-    return `I don't have personal opinions, but I can share facts about **${subject}**. What would you like to know?`;
-  }
-  return opinions[Math.floor(Math.random() * opinions.length)];
-}
-
-/**
- * Hypothetical / "what if" questions.
- * Yang acknowledges the hypothetical framing and answers using its
- * symbolic reasoning and known facts where possible, rather than refusing.
- */
-function handleHypothetical(lower: string): string {
-  // Try to extract the scenario
-  const scenarioM = lower.match(/(?:what\s+if|suppose|imagine|hypothetically|let'?s\s+say)\s+(.+?)(?:\?|$)/i);
-  if (scenarioM) {
-    const scenario = scenarioM[1].trim();
-    // Check if it's a math/logical hypothetical
-    const hasNumber = /\d/.test(scenario);
-    if (hasNumber) {
-      const r = safeMath(scenario.replace(/[^0-9+\-*/().% ]/g, ""));
-      if (r !== null) return `Hypothetically: **${scenario}** would give **${fmt(r)}**.`;
-    }
-    // Check taught facts for relevant knowledge
-    const taught = findFactMatch(scenario);
-    if (taught) {
-      return `Interesting hypothetical! Based on what I know — **${taught.key}** is **${taught.value}** — here's how I'd reason through it: if ${scenario}, then the implications depend on that baseline. What angle interests you most?`;
-    }
-    return `That's an interesting "what if"! I don't have enough information about **"${scenario}"** to reason through it fully — but teach me the relevant facts and I'll try. Or ask a more specific question and I'll do my best.`;
-  }
-  return "Interesting hypothetical! Give me more context — what specifically are you imagining? I'll reason through it with what I know.";
 }

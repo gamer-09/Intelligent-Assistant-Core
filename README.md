@@ -62,7 +62,7 @@ Intelligent-Assistant-Core/
 │   │   ├── nlp/
 │   │   │   ├── intent-detector.ts   # Pattern + keyword intent detection
 │   │   │   ├── response-generator.ts # Response logic for all 17 intents
-│   │   │   └── capabilities.ts      # Help guide data (35 capabilities)
+│   │   │   └── capabilities.ts      # Help guide data (44 capabilities)
 │   │   ├── routes/
 │   │   │   ├── chat.ts              # POST/GET/DELETE /api/chat/*
 │   │   │   └── assistant.ts         # GET /api/assistant/*
@@ -98,6 +98,7 @@ Open the **Guide** tab in the app for the full interactive list. Quick overview:
 | **Lists & Reminders** | `Add milk to my list` · `Remind me to call Alice` |
 | **Word Games** | `Spell 'necessary'` · `Scramble 'intelligent'` |
 | **Conversation** | `Tell me a joke` · `Who are you?` · `What can you do?` |
+| **Reasoning & Common Sense** | `What happens if I put ice in the sun?` · `Can an elephant fit inside a backpack?` · `What do a dog, a cat and a wolf have in common?` |
 
 ---
 
@@ -108,7 +109,7 @@ Open the **Guide** tab in the app for the full interactive list. Quick overview:
 | `POST` | `/api/chat/message` | Send a message, get a response |
 | `GET` | `/api/chat/history?sessionId=` | Get conversation history |
 | `DELETE` | `/api/chat/history?sessionId=` | Clear conversation history |
-| `GET` | `/api/assistant/capabilities` | List all 35 capabilities |
+| `GET` | `/api/assistant/capabilities` | List all 44 capabilities |
 | `GET` | `/api/assistant/stats?sessionId=` | Session usage stats |
 | `GET` | `/api/healthz` | Health check |
 
