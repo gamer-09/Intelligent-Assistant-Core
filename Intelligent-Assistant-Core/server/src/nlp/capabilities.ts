@@ -56,6 +56,12 @@ export const CAPABILITIES: Capability[] = [
   { id: "learn-reasoning", name: "Step-by-Step Reasoning", description: "Ask 'why' or 'how come' to get a step-by-step explanation from known facts.", examples: ["Why is recursion useful?", "Explain how encryption works"], category: "Learning & Growth" },
   { id: "learn-challenge", name: "Challenge Me", description: "Get a random problem to solve, with the answer checked and revealed.", examples: ["Challenge me", "Quiz me", "Give me a problem"], category: "Learning & Growth" },
   { id: "learn-research", name: "Research a Topic", description: "Gather everything known about a topic across built-in and taught knowledge; unknown topics are logged to learn later.", examples: ["Research recursion", "What do you know about Japan?"], category: "Learning & Growth" },
+  // Reasoning & Common Sense
+  { id: "reason-causal", name: "Cause & Effect", description: "Reason from a cause to its likely effect using a small built-in world model, with fuzzy matching for novel phrasing.", examples: ["What happens if I put ice in the sun?", "Why does a dropped glass break?"], category: "Reasoning & Common Sense" },
+  { id: "reason-containment", name: "Size & Fit Common Sense", description: "Judge whether one everyday object could fit inside another, based on rough size categories.", examples: ["Can an elephant fit inside a backpack?", "Can a phone fit in a backpack?"], category: "Reasoning & Common Sense" },
+  { id: "reason-concept-formation", name: "Shared Category Discovery", description: "Find a category several entities have in common by tracing their known is-a relationships, instead of requiring the category to be taught directly.", examples: ["What do a dog, a cat and a wolf have in common?"], category: "Reasoning & Common Sense" },
+  { id: "reason-contradiction", name: "Contradiction Detection", description: "Flags when a newly taught comparison relation (e.g. 'older than') conflicts with one already learned, instead of silently storing both.", examples: ["Sarah is older than John", "John is older than Sarah"], category: "Reasoning & Common Sense" },
+  { id: "reason-goal-resume", name: "Goal Follow-Through", description: "Proactively reminds you of an unfinished multi-step goal the next time you talk to it, instead of only reacting when asked.", examples: ["Help me plan a trip to Japan", "..."], category: "Reasoning & Common Sense" },
 ];
 
 export const CATEGORIES = [...new Set(CAPABILITIES.map(c => c.category))];
