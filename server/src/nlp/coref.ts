@@ -12,25 +12,28 @@
  * a reference word appears in the new query.
  */
 
-/** Reference words that may stand in for an earlier topic. */
+/**
+ * Reference patterns — ordered most-to-least ambiguous.
+ * We only replace when the WHOLE message is reference-heavy (see guards below).
+ * Possessive "its" is intentionally excluded — almost never anaphoric in practice.
+ */
 const REFERENCE_PATTERNS: RegExp[] = [
   /\bit\b/gi,
-  /\bits\b/gi,
   /\bthis\b/gi,
   /\bthat\b/gi,
   /\bthey\b/gi,
   /\bthem\b/gi,
-  /\btheir\b/gi,
-  /\bthose\b/gi,
-  /\bthese\b/gi,
   /\bthe\s+same\b/gi,
   /\bthe\s+topic\b/gi,
   /\bthe\s+subject\b/gi,
   /\bthe\s+thing\b/gi,
-  /\bsuch\s+(?:a\s+)?thing\b/gi,
 ];
 
-/** Words that carry no referent value on their own. */
+/**
+ * Words that carry no entity/referent value on their own.
+ * Slightly broader than a normal stopword list so that verbs and adjectives
+ * pulled from "I want to know about X" don't get picked as the referent.
+ */
 const STOP = new Set([
   "a","an","the","is","are","was","were","be","been","being","of","to","in",
   "on","at","for","with","by","and","or","but","if","so","that","this","these",
@@ -41,6 +44,11 @@ const STOP = new Set([
   "very","really","then","than","when","where","there","here","some","any",
   "get","got","has","have","had","been","yes","no","ok","okay","sure","right",
   "well","let","make","go","going","see","look","need","use","used","using",
+  // Verbs and adjectives that appear in user turns but are NOT entities:
+  "know","think","like","love","hate","find","feel","mean","said","ask",
+  "capital","city","country","place","thing","person","name","year","time",
+  "much","many","little","big","small","old","new","good","bad","true","false",
+  "first","last","next","same","different","other","another","few","several",
 ]);
 
 /** Return content-bearing tokens from a text string. */
@@ -53,45 +61,91 @@ function contentTokens(text: string): string[] {
 }
 
 /**
- * Determine whether `text` is reference-heavy enough to warrant resolution.
- * We only resolve when:
- *  - the message is short (≤ 7 words), OR
- *  - it contains a reference word AND no strong subject noun
+ * Return true only when the message is both:
+ *  (a) reference-heavy — contains at least one reference token, AND
+ *  (b) subject-poor — has fewer than MIN_CONTENT_TOKENS content-bearing words
+ *
+ * This double gate prevents innocent short queries like "what is it?"
+ * from being corrupted when they are unambiguously self-contained.
  */
-function needsResolution(text: string): boolean {
-  const lower = text.toLowerCase();
-  const wordCount = lower.split(/\s+/).length;
-  if (wordCount > 10) return false; // long queries are self-sufficient
+const MIN_CONTENT_TOKENS = 2; // fewer than this → subject-poor enough to try coref
+
+function hasReferenceToken(lower: string): boolean {
   return REFERENCE_PATTERNS.some((p) => { p.lastIndex = 0; return p.test(lower); });
+}
+
+function needsResolution(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  const wordCount = lower.split(/\s+/).filter(Boolean).length;
+
+  // Very long queries are always self-sufficient
+  if (wordCount > 9) return false;
+
+  // Must actually contain a reference token
+  if (!hasReferenceToken(lower)) return false;
+
+  // Count content-bearing tokens (nouns/terms that could stand alone as a query)
+  const contentCount = contentTokens(text).length;
+
+  // Only resolve if there are very few independent content tokens
+  // (i.e. the message is primarily a reference + question word)
+  return contentCount < MIN_CONTENT_TOKENS;
+}
+
+/**
+ * Score a candidate token for how likely it is to be an entity/topic:
+ *  +2  if it starts with a capital letter in the original text (proper noun)
+ *  +1  if it is longer than 5 characters (domain terms tend to be longer)
+ *  +1  per additional occurrence in the context window (frequency boost)
+ */
+function entityScore(token: string, rawMessages: string[]): number {
+  let score = 0;
+  for (const msg of rawMessages) {
+    // Count occurrences (case-insensitive)
+    const re = new RegExp(`\\b${token}\\b`, "gi");
+    const hits = (msg.match(re) ?? []).length;
+    score += hits;
+    // Capitalization bonus: the word appears capitalised somewhere → likely a proper noun
+    const capRe = new RegExp(`\\b${token[0].toUpperCase()}${token.slice(1)}\\b`, "g");
+    if (capRe.test(msg)) score += 2;
+  }
+  if (token.length > 5) score += 1;
+  return score;
 }
 
 /**
  * Extract the best candidate referent from a list of recent messages.
- * Prefers the most recent user message; falls back to assistant messages.
- * Returns undefined if nothing useful is found.
+ * Prefers the most recent user message; uses entity scoring (not raw frequency)
+ * to avoid accidentally picking verbs/adjectives as the referent.
+ * Returns undefined if nothing useful is found with sufficient confidence.
  */
 function findReferent(messages: { role: string; text: string }[]): string | undefined {
-  // Walk backwards through recent messages looking for content nouns
-  const candidates: string[] = [];
+  // Collect content tokens from the most recent user message (primary source),
+  // then the most recent assistant message (secondary).
+  const rawTexts = messages.map((m) => m.text);
+  const candidates = new Map<string, number>();
+
   for (const msg of [...messages].reverse()) {
     const tokens = contentTokens(msg.text);
     if (tokens.length === 0) continue;
-    // Prefer user messages — they stated the topic
-    if (msg.role === "user") {
-      candidates.push(...tokens);
-      break;
+    for (const t of tokens) {
+      const s = entityScore(t, rawTexts);
+      candidates.set(t, Math.max(candidates.get(t) ?? 0, s));
     }
-    candidates.push(...tokens.slice(0, 3));
-    if (candidates.length >= 5) break;
+    // Stop after the first non-empty user message (most relevant context)
+    if (msg.role === "user" && tokens.length > 0) break;
   }
 
-  if (candidates.length === 0) return undefined;
+  if (candidates.size === 0) return undefined;
 
-  // Count frequency; the most-mentioned term is probably the referent
-  const freq = new Map<string, number>();
-  for (const t of candidates) freq.set(t, (freq.get(t) ?? 0) + 1);
-  const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
-  return sorted[0]?.[0];
+  const sorted = [...candidates.entries()].sort((a, b) => b[1] - a[1]);
+  const [best, bestScore] = sorted[0];
+
+  // Require a minimum entity score to avoid returning low-quality tokens.
+  // Score of 0 means no capitalization, single occurrence, and short — likely not an entity.
+  if (bestScore < 1) return undefined;
+
+  return best;
 }
 
 /**

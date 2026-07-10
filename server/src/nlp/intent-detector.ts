@@ -336,37 +336,48 @@ const INTENT_PATTERNS: IntentPattern[] = [
   },
   // ── New intents added by audit improvements ────────────────────────────────
   {
+    // follow_up: ONLY fire when the message is clearly a continuation request
+    // with no independent subject. Anchored start/end patterns prevent stealing
+    // from help/knowledge intents. "what else" is intentionally dropped from
+    // keywords (too broad) and only kept in tightly anchored patterns.
     intent: "follow_up",
     patterns: [
-      /^(?:tell\s+me\s+more|more\s+details?|elaborate|expand\s+on\s+that|go\s+on|continue|more\s+info)[\s!.?]*$/i,
-      /^(?:more|and\??|also\??)[\s!.?]*$/i,
-      /tell\s+me\s+more\s+about\s+(?:that|this|it)/i,
-      /(?:give\s+me\s+more|say\s+more|keep\s+going|what\s+else)/i,
-      /more\s+about\s+(?:that|this|it)/i,
-      /can\s+you\s+(?:expand|elaborate|say\s+more)/i,
-      /(?:interesting|cool|fascinating)[,.]?\s*(?:tell\s+me\s+more|go\s+on)/i,
+      // Exact standalone phrases (^ and $ anchors required)
+      /^(?:tell\s+me\s+more|more\s+details?|elaborate|expand\s+on\s+that|go\s+on|keep\s+going|say\s+more|more\s+info(?:rmation)?)[\s!.?]*$/i,
+      /^more[\s!.?]*$/i,
+      // Requires explicit referent pronoun (that/this/it) so free-standing
+      // "tell me more about France" is NOT captured (goes to general_knowledge)
+      /^tell\s+me\s+more\s+about\s+(?:that|this|it)[\s!.?]*$/i,
+      /^more\s+about\s+(?:that|this|it)[\s!.?]*$/i,
+      /^can\s+you\s+(?:expand|elaborate|say\s+more)(?:\s+on\s+(?:that|this|it))?[\s!.?]*$/i,
     ],
-    keywords: ["tell me more", "elaborate", "more details", "expand on", "go on", "what else", "more about that", "more info", "keep going", "say more"],
-    weight: 1.5,
+    // Keywords intentionally short — we add nothing broad like "what else"
+    keywords: ["tell me more", "elaborate", "more details", "expand on that", "keep going", "say more"],
+    weight: 1.6,
   },
   {
+    // hypothetical: require explicit "what if" phrase or "hypothetically" adverb;
+    // removed "could" from keywords (too common in capability questions)
+    // and removed the broad `what would/could` pattern.
     intent: "hypothetical",
     patterns: [
-      /what\s+(?:would|if|happens?\s+if|could)/i,
-      /^(?:what\s+if|suppose|imagine|hypothetically|let'?s\s+say)/i,
-      /if\s+(?:i|you|we|someone)\s+(?:were|was|had|could)/i,
+      /^(?:what\s+if|suppose|imagine|hypothetically|let'?s\s+say)\b/i,
+      /if\s+(?:i|you|we|someone)\s+(?:were|was|had)\b/i,
+      /what\s+would\s+happen\s+if\b/i,
     ],
-    keywords: ["what if", "suppose", "imagine", "hypothetically", "let's say", "what would happen", "could"],
-    weight: 1.0,
+    keywords: ["what if", "suppose", "imagine", "hypothetically", "let's say", "what would happen if"],
+    weight: 1.1,
   },
   {
+    // opinion: removed "recommend" from keywords since recommendation requests
+    // are better served by general_knowledge or research intents.
     intent: "opinion",
     patterns: [
-      /what\s+(?:do\s+you\s+(?:think|prefer|recommend)|is\s+your\s+(?:opinion|view|take))/i,
-      /which\s+(?:is\s+better|do\s+you\s+prefer|would\s+you\s+recommend)/i,
-      /(?:do\s+you\s+(?:like|enjoy|prefer))/i,
+      /what\s+(?:do\s+you\s+(?:think|prefer)|is\s+your\s+(?:opinion|view|take))\b/i,
+      /which\s+(?:is\s+better|do\s+you\s+prefer|would\s+you\s+choose)\b/i,
+      /do\s+you\s+(?:like|enjoy|prefer)\b/i,
     ],
-    keywords: ["what do you think", "your opinion", "do you prefer", "which is better", "recommend"],
+    keywords: ["what do you think", "your opinion", "do you prefer", "which is better", "do you like"],
     weight: 1.0,
   },
 ];

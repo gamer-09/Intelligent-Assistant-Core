@@ -496,8 +496,9 @@ function handleTeach(entities: Record<string, unknown>): string {
   }
 
   // Contradiction detection: check whether we already have a different value
-  // for this key. If so, warn the user before silently overwriting.
-  const existing = stmts.getFact.get(key.toLowerCase()) as LearnedFactRow | undefined;
+  // for this key. Must use normalizeQuery (same path as storage) so that
+  // spacing/punctuation variants ("my cat" vs "my  cat") still match.
+  const existing = stmts.getFact.get(normalizeQuery(key)) as unknown as LearnedFactRow | undefined;
   if (existing && existing.value.toLowerCase() !== value.toLowerCase()) {
     teachFact(key, value);
     addTaughtFact(key, value);
