@@ -178,8 +178,13 @@ export function formatSystemInfo(info: SystemInfo): string {
 
 export function formatDirListing(dir: string, entries: DirEntry[]): string {
   if (entries.length === 0) return `${dir} is empty.`;
-  const lines = entries
-    .sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1))
-    .map((e) => (e.type === "directory" ? `📁 ${e.name}/` : `📄 ${e.name}${e.sizeBytes != null ? ` (${e.sizeBytes} bytes)` : ""}`));
-  return `**Contents of ${dir}:**\n\n${lines.join("\n")}`;
+  const sorted = entries.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1));
+  const fileCount = sorted.filter((e) => e.type === "file").length;
+  const folderCount = sorted.filter((e) => e.type === "directory").length;
+  const summary = [
+    fileCount > 0 ? `${fileCount} file${fileCount !== 1 ? "s" : ""}` : "",
+    folderCount > 0 ? `${folderCount} folder${folderCount !== 1 ? "s" : ""}` : "",
+  ].filter(Boolean).join(", ");
+  const lines = sorted.map((e) => (e.type === "directory" ? `📁 ${e.name}/` : `📄 ${e.name}${e.sizeBytes != null ? ` (${e.sizeBytes} bytes)` : ""}`));
+  return `**Contents of ${dir}** (${summary}):\n\n${lines.join("\n")}`;
 }

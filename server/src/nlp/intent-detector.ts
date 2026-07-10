@@ -327,8 +327,10 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /(?:list|show|browse)\s+(?:the\s+)?files?\s+in\s+(.+)/i,
       /what(?:'s|\s+is)\s+in\s+(?:my\s+)?(?:folder|directory)\s*(.*)/i,
       /(?:list|show)\s+(?:my\s+)?(?:folder|directory)\s*(.*)/i,
+      /(?:how\s+many|count)\s+(?:files?|documents?|folders?)\s*(?:are\s+(?:in|inside)\s+)?(?:my\s+)?(?:pc|folder|directory|documents?)?\s*(.*)/i,
+      /(?:count|how\s+many)\s+(?:files?|documents?|items?)\s+(?:do\s+i\s+have|in\s+my\s+(?:folder|pc|documents?))\s*(.*)/i,
     ],
-    keywords: ["list files", "browse folder", "show files", "list directory", "what's in my folder"],
+    keywords: ["list files", "browse folder", "show files", "list directory", "what's in my folder", "how many files", "count files", "count documents"],
     weight: 1.3,
   },
   {
