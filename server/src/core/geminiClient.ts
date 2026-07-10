@@ -14,10 +14,10 @@ export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
-export async function askGemini(turns: GeminiTurn[]): Promise<{ text: string } | { error: string }> {
-  const apiKey = process.env.GEMINI_API_KEY;
+export async function askGemini(turns: GeminiTurn[], overrideApiKey?: string): Promise<{ text: string } | { error: string }> {
+  const apiKey = overrideApiKey?.trim() || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return { error: "GEMINI_API_KEY is not set yet. Add it in your secrets and restart the server to enable this tab." };
+    return { error: "No Gemini API key set. Paste your key in the box above, or set GEMINI_API_KEY in your secrets and restart the server." };
   }
 
   try {

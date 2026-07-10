@@ -20,7 +20,7 @@ router.get("/status", (_req, res) => {
 });
 
 router.post("/message", async (req, res) => {
-  const { text, sessionId = "default" } = req.body as { text?: string; sessionId?: string };
+  const { text, sessionId = "default", apiKey } = req.body as { text?: string; sessionId?: string; apiKey?: string };
   if (!text || typeof text !== "string" || !text.trim()) {
     return res.status(400).json({ error: "Message text is required." });
   }
@@ -34,7 +34,7 @@ router.post("/message", async (req, res) => {
     }));
     const turns: GeminiTurn[] = [...history, { role: "user", text: trimmed }];
 
-    const result = await askGemini(turns);
+    const result = await askGemini(turns, typeof apiKey === "string" ? apiKey : undefined);
     const isError = "error" in result;
     const finalText = isError ? (result as { error: string }).error : (result as { text: string }).text;
 

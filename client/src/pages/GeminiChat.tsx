@@ -11,6 +11,12 @@ function getGeminiSessionId(): string {
 }
 
 const SESSION_ID = getGeminiSessionId();
+const API_KEY_STORAGE_KEY = "iac_gemini_api_key";
+
+function maskKey(key: string): string {
+  if (key.length <= 8) return "•".repeat(key.length);
+  return key.slice(0, 4) + "•".repeat(key.length - 8) + key.slice(-4);
+}
 
 interface GeminiMessage {
   id: number;
@@ -34,6 +40,9 @@ export default function GeminiChatPage() {
   const [loading, setLoading] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY) ?? "");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [editingKey, setEditingKey] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -43,6 +52,21 @@ export default function GeminiChatPage() {
       .then(r => r.json())
       .then(d => setMessages(d.messages ?? []));
   }, []);
+
+  function saveApiKey() {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) return;
+    localStorage.setItem(API_KEY_STORAGE_KEY, trimmed);
+    setApiKey(trimmed);
+    setApiKeyInput("");
+    setEditingKey(false);
+  }
+
+  function clearApiKey() {
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+    setApiKey("");
+    setEditingKey(false);
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -65,7 +89,7 @@ export default function GeminiChatPage() {
       const res = await fetch(`${API}/gemini/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: trimmed, sessionId: SESSION_ID }),
+        body: JSON.stringify({ text: trimmed, sessionId: SESSION_ID, apiKey: apiKey || undefined }),
       });
       const data = await res.json();
       if (data.userMessage && data.assistantMessage) {
@@ -113,11 +137,39 @@ export default function GeminiChatPage() {
         </span>
       </div>
 
-      {configured === false && (
+      {configured === false && !apiKey && !editingKey && (
         <div className="gemini-banner">
-          GEMINI_API_KEY is not set. Add it in Secrets and restart the server to enable this tab — until then messages will return an error.
+          No Gemini API key configured on the server. Paste your own key below to use this tab —
+          it's stored only in this browser and sent with your messages.
+          <button className="gemini-key-inline-btn" onClick={() => setEditingKey(true)}>Add key</button>
         </div>
       )}
+
+      <div className="gemini-key-box">
+        {editingKey || (!apiKey && configured === false) ? (
+          <>
+            <input
+              type="password"
+              className="gemini-key-input"
+              placeholder="Paste your Gemini API key"
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") saveApiKey(); if (e.key === "Escape") setEditingKey(false); }}
+              autoFocus
+            />
+            <button className="gemini-key-save-btn" onClick={saveApiKey} disabled={!apiKeyInput.trim()}>Save</button>
+            {apiKey && <button className="gemini-key-cancel-btn" onClick={() => setEditingKey(false)}>Cancel</button>}
+          </>
+        ) : apiKey ? (
+          <>
+            <span className="gemini-key-saved">Using your key: <code>{maskKey(apiKey)}</code></span>
+            <button className="gemini-key-edit-btn" onClick={() => { setApiKeyInput(""); setEditingKey(true); }}>Change</button>
+            <button className="gemini-key-clear-btn" onClick={clearApiKey}>Remove</button>
+          </>
+        ) : (
+          <button className="gemini-key-edit-btn" onClick={() => setEditingKey(true)}>+ Add your own Gemini API key</button>
+        )}
+      </div>
 
       <div className="chat-area">
         {messages.length === 0 && !loading ? (

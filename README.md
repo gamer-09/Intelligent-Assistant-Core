@@ -149,7 +149,9 @@ No machine learning, no embeddings, no external calls — pure deterministic log
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3001` | Server port |
-| `GEMINI_API_KEY` | *(none)* | Optional. Enables the Gemini tab/route. Everything else works fully offline without it. |
+| `GEMINI_API_KEY` | *(none)* | Optional server-wide default. Everything else works fully offline without it. |
+
+You don't have to set `GEMINI_API_KEY` on the server at all — the **Gemini tab** in the app has a box to paste your own key directly in the browser. It's stored in `localStorage` and sent only with your own requests; it's never written to the server's `.env`.
 
 Copy `.env.example` to `.env` to override.
 
