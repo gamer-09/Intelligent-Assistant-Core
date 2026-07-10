@@ -7,7 +7,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { registerTool, type ToolSpec } from "./tools.js";
 
 export async function loadPlugins(): Promise<string[]> {
@@ -20,7 +20,7 @@ export async function loadPlugins(): Promise<string[]> {
   for (const entry of entries) {
     if (!/\.(ts|js)$/.test(entry) || entry.endsWith(".d.ts")) continue;
     try {
-      const mod = (await import(path.join(pluginsDir, entry))) as { default?: ToolSpec };
+      const mod = (await import(pathToFileURL(path.join(pluginsDir, entry)).href)) as { default?: ToolSpec };
       if (mod.default && typeof mod.default.execute === "function" && typeof mod.default.name === "string") {
         registerTool(mod.default);
         loaded.push(mod.default.name);
