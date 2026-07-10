@@ -1,0 +1,438 @@
+# Expert Architectural Review Prompt
+
+You are acting as the lead architect of a research team evaluating an independent AI assistant.
+
+Your task is **not** to praise the project. Your task is to identify every architectural weakness, design flaw, scalability issue, reasoning limitation, maintainability concern, and missed opportunity.
+
+Treat this as a professional engineering review intended to improve the system.
+
+---
+
+# Project Philosophy
+
+This assistant is intentionally **not** an LLM.
+
+It must remain:
+
+* completely independent
+* self-contained
+* capable of offline reasoning
+* free of OpenAI, Anthropic, Gemini, Claude, DeepSeek, Grok, or any hosted AI API
+* capable of using the web only as an external information source—not as its intelligence
+
+Do **not** recommend replacing the architecture with a hosted LLM.
+
+Instead, recommend improvements using:
+
+* symbolic AI
+* graph reasoning
+* local NLP
+* statistical NLP
+* retrieval systems
+* expert systems
+* finite-state systems
+* local embeddings
+* hybrid symbolic/statistical approaches
+* classical AI algorithms
+* local inference models
+
+The review must respect the project's philosophy.
+
+---
+
+# Review Criteria
+
+Review every major subsystem.
+
+Do not stop after identifying a few issues.
+
+Assume the goal is eventually competing with assistants like ChatGPT, Claude, Cursor, and Copilot **without relying on their APIs.**
+
+---
+
+# 1. Architecture
+
+Evaluate:
+
+* modularity
+* separation of concerns
+* extensibility
+* coupling
+* cohesion
+* maintainability
+* testability
+* dependency management
+* future scalability
+
+Identify components that should be split or redesigned.
+
+---
+
+# 2. Intent Detection
+
+Determine whether the assistant depends too heavily on:
+
+* regex
+* keywords
+* manual patterns
+* static matching
+
+Critique:
+
+* ambiguity handling
+* multilingual capability
+* paraphrase detection
+* synonym recognition
+* contextual understanding
+
+Suggest improvements without introducing hosted AI.
+
+---
+
+# 3. Natural Language Understanding
+
+Determine whether the assistant truly understands language or merely recognizes patterns.
+
+Critique:
+
+* semantic similarity
+* ambiguity resolution
+* entity extraction
+* relation extraction
+* intent confidence
+* contextual inference
+* linguistic robustness
+
+Recommend classical NLP or local semantic methods where appropriate.
+
+---
+
+# 4. Reasoning Engine
+
+Critically evaluate:
+
+* deductive reasoning
+* inductive reasoning
+* abductive reasoning
+* causal reasoning
+* temporal reasoning
+* mathematical reasoning
+* multi-step reasoning
+* chain construction
+* consistency
+
+Determine whether reasoning is genuine or mostly scripted.
+
+---
+
+# 5. Memory System
+
+Review:
+
+* memory storage
+* retrieval
+* indexing
+* ranking
+* forgetting
+* duplicate detection
+* contradiction detection
+* temporal decay
+* fact confidence
+* provenance
+
+Determine whether memories scale beyond thousands or millions of facts.
+
+---
+
+# 6. Knowledge Representation
+
+Evaluate whether information should remain plain text or evolve into:
+
+* knowledge graphs
+* ontologies
+* semantic networks
+* linked concepts
+* weighted relationships
+
+Explain why.
+
+---
+
+# 7. Learning System
+
+Critique:
+
+* correction learning
+* fact learning
+* automatic learning
+* conflict resolution
+* confidence updating
+* knowledge verification
+* research gap handling
+
+Determine whether the assistant actually learns concepts or only stores sentences.
+
+---
+
+# 8. Retrieval
+
+Evaluate:
+
+* lookup algorithms
+* indexing
+* search quality
+* ranking
+* retrieval latency
+* semantic retrieval
+* hybrid retrieval
+
+Recommend improvements if retrieval complexity becomes a bottleneck.
+
+---
+
+# 9. Planning
+
+Determine whether the assistant can:
+
+* decompose tasks
+* prioritize subtasks
+* schedule execution
+* recover from failures
+* retry intelligently
+* evaluate completion
+
+If not, explain why a planning subsystem is needed.
+
+---
+
+# 10. Tool System
+
+Evaluate whether tools are:
+
+* modular
+* discoverable
+* permission-controlled
+* independently installable
+* composable
+* reusable
+
+Identify weaknesses in the tool architecture.
+
+---
+
+# 11. Self-Evaluation
+
+Determine whether the assistant:
+
+* evaluates answers
+* estimates confidence
+* detects contradictions
+* verifies results
+* revises responses
+
+If missing, explain how a reflection stage would improve reliability.
+
+---
+
+# 12. Conversation Management
+
+Critique:
+
+* context retention
+* summarization
+* compression
+* topic tracking
+* long conversations
+* context selection
+
+Determine whether context scales indefinitely.
+
+---
+
+# 13. User Model
+
+Review:
+
+* personalization
+* long-term preferences
+* recurring projects
+* communication style
+* expertise estimation
+* adaptive responses
+
+Explain what is missing.
+
+---
+
+# 14. Document Intelligence
+
+Determine whether the assistant can effectively:
+
+* index PDFs
+* understand source code
+* analyze Markdown
+* search documents
+* answer grounded questions
+
+Critique any limitations.
+
+---
+
+# 15. Code Intelligence
+
+Evaluate:
+
+* AST analysis
+* project indexing
+* dependency analysis
+* symbol resolution
+* static analysis
+* refactoring support
+* debugging assistance
+
+Identify opportunities for improvement.
+
+---
+
+# 16. Web Intelligence
+
+Since web access is permitted:
+
+Evaluate:
+
+* search strategy
+* source ranking
+* citation quality
+* caching
+* freshness
+* misinformation handling
+* source comparison
+
+Determine whether the assistant intelligently integrates web knowledge.
+
+---
+
+# 17. Scalability
+
+Review computational complexity of:
+
+* memory lookup
+* reasoning
+* search
+* intent detection
+* plugin loading
+* indexing
+
+Highlight algorithms that will fail at larger scales.
+
+---
+
+# 18. Explainability
+
+Determine whether every answer can explain:
+
+* where information came from
+* why it was selected
+* which rules fired
+* which memories were used
+* how confidence was calculated
+
+Explain why explainability matters.
+
+---
+
+# 19. Security
+
+Review:
+
+* prompt injection resistance
+* malicious memory insertion
+* unsafe tool execution
+* filesystem safety
+* web search abuse
+* input validation
+* mathematical parser safety
+
+Identify security risks.
+
+---
+
+# 20. Testing
+
+Evaluate:
+
+* unit testing
+* integration testing
+* reasoning tests
+* regression tests
+* benchmark suites
+
+Identify missing test coverage.
+
+---
+
+# 21. Performance
+
+Review:
+
+* startup time
+* memory usage
+* response latency
+* indexing efficiency
+* database access
+* caching
+
+Recommend measurable optimizations.
+
+---
+
+# 22. Missing Capabilities
+
+Identify significant missing features compared to modern intelligent assistants, excluding hosted LLM capabilities.
+
+Examples include (but are not limited to):
+
+* autonomous planning
+* knowledge graph reasoning
+* symbolic inference
+* hybrid retrieval
+* confidence estimation
+* contradiction detection
+* goal tracking
+* task persistence
+* plugin marketplace
+* workflow automation
+* explainable reasoning
+* active learning
+* semantic clustering
+* adaptive memory pruning
+* event timelines
+* uncertainty propagation
+
+---
+
+# Output Requirements
+
+Do **not** summarize.
+
+Instead produce:
+
+1. Every architectural weakness.
+2. Every reasoning limitation.
+3. Every scalability concern.
+4. Every maintainability issue.
+5. Every algorithmic bottleneck.
+6. Every missing AI capability.
+7. Every security concern.
+8. Every opportunity for redesign.
+
+For every criticism include:
+
+* Severity (Critical, High, Medium, Low)
+* Why it matters
+* Real-world consequences
+* Recommended redesign
+* Estimated implementation difficulty
+* Expected impact
+
+Assume this project is intended to become one of the most capable fully independent AI assistants ever built. Review it accordingly, and be exhaustive rather than polite.
