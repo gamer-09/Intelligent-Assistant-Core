@@ -3,6 +3,23 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+
+// Load server/.env into process.env on startup (no dotenv dependency needed).
+// This ensures settings saved via POST /api/settings survive a server restart.
+(function loadDotEnv() {
+  const __filename = fileURLToPath(import.meta.url);
+  const envPath = path.join(path.dirname(__filename), "..", "..", ".env");
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq === -1) continue;
+    const key = t.slice(0, eq).trim();
+    const val = t.slice(eq + 1).trim();
+    if (key && val && !process.env[key]) process.env[key] = val;
+  }
+})();
 import chatRouter from "./routes/chat.js";
 import assistantRouter from "./routes/assistant.js";
 import geminiRouter from "./routes/gemini.js";

@@ -63,9 +63,8 @@ function writeEnvKey(key: string, value: string): void {
 // GET /api/settings — return current assistant settings
 router.get("/", (_req, res) => {
   const env = readEnvFile();
-  // Also fall back to the live process env in case the .env file hasn't been
-  // created yet (first run without a .env).
-  const fsRoot = env["ASSISTANT_FS_ROOT"] ?? process.env.ASSISTANT_FS_ROOT ?? "";
+  // Use || (not ??) so an empty string in .env still falls back to process.env.
+  const fsRoot = env["ASSISTANT_FS_ROOT"] || process.env.ASSISTANT_FS_ROOT || "";
   res.json({ fsRoot });
 });
 
