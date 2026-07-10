@@ -8,6 +8,16 @@ import {
   noteResearchGap,
   normalizeQuery,
 } from "./memory.js";
+import { evaluateExpression } from "../core/mathParser.js";
+import { addTaughtFact, relationsFrom, relationsByType } from "../core/knowledgeGraph.js";
+import { learnComparative, isRelated, rankByRelation, resolveSuperlativeWord } from "../core/reasoningChains.js";
+import { bestFactMatch } from "../core/memoryRanking.js";
+import { lookupTopic, formatWebResult } from "../core/webIntel.js";
+import { indexDocumentFile, searchDocuments, listIndexedDocuments, DOCS_ROOT } from "../core/docIntel.js";
+import { findSymbol } from "../core/codeIntel.js";
+import { startGoal, getActiveGoal, completeStep, formatGoal } from "../core/goals.js";
+import { formatToolList } from "../core/tools.js";
+import path from "path";
 
 // Session-scoped in-memory state
 const sessionReminders = new Map<string, string[]>();
@@ -50,22 +60,17 @@ function factorial(n: number): bigint {
 function gcd(a: number, b: number): number { return b === 0 ? a : gcd(b, a % b); }
 function lcm(a: number, b: number): number { return (a * b) / gcd(a, b); }
 
+// Real recursive-descent parser/evaluator (core/mathParser.ts) — no dynamic
+// code execution. Word-operators are normalized to symbols first since the
+// parser grammar only knows symbolic operators.
 function safeMath(expr: string): number | null {
-  try {
-    const cleaned = expr
-      .replace(/\bplus\b/gi, "+").replace(/\bminus\b/gi, "-")
-      .replace(/\btimes\b/gi, "*").replace(/\bdivided by\b/gi, "/")
-      .replace(/\bmultiplied by\b/gi, "*").replace(/\^/g, "**")
-      .replace(/×/g, "*").replace(/÷/g, "/")
-      .replace(/[^0-9+\-*/().% ]/g, "");
-    if (cleaned.trim().length > 200) return null;
-    if (!/^[\d\s+\-*/().%]+$/.test(cleaned.trim())) return null;
-    const expMatch = cleaned.match(/(\d+)\s*\*\*\s*(\d+)/);
-    if (expMatch && parseInt(expMatch[2], 10) > 300) return null;
-    // eslint-disable-next-line no-new-func
-    const result = Function(`"use strict"; return (${cleaned.trim()})`)() as number;
-    return typeof result === "number" && isFinite(result) ? result : null;
-  } catch { return null; }
+  const cleaned = expr
+    .replace(/\bplus\b/gi, "+").replace(/\bminus\b/gi, "-")
+    .replace(/\btimes\b/gi, "*").replace(/\bdivided by\b/gi, "/")
+    .replace(/\bmultiplied by\b/gi, "*").replace(/×/g, "*").replace(/÷/g, "/")
+    .replace(/\^/g, "^");
+  const { value } = evaluateExpression(cleaned);
+  return value;
 }
 
 function fmt(n: number): string {
@@ -163,7 +168,7 @@ const JOKES = [
 
 // ─── Main generator ───────────────────────────────────────────────────────────
 
-export function generateResponse(text: string, detected: DetectedIntent, sessionId: string): string {
+export async function generateResponse(text: string, detected: DetectedIntent, sessionId: string): Promise<string> {
   const { intent, entities } = detected;
   const lower = text.toLowerCase().trim();
   const nums = entities.numbers as number[] | undefined;
@@ -199,6 +204,13 @@ export function generateResponse(text: string, detected: DetectedIntent, session
     case "general_knowledge": return handleKnowledge(lower, nums);
     case "number_fact": return handleNumberFact(nums);
     case "word_game": return handleWordGame(lower);
+    case "comparative_teach": return handleComparativeTeach(text);
+    case "comparative_query": return handleComparativeQuery(text, entities);
+    case "goal": return handleGoal(text, entities, sessionId);
+    case "tools": return `Here's my current tool registry:\n\n${formatToolList()}`;
+    case "web_research": return await handleWebResearch(entities);
+    case "document": return await handleDocument(entities);
+    case "code_lookup": return handleCodeLookup(entities);
     default: return handleFallback(lower, text);
   }
 }
@@ -368,6 +380,7 @@ function handleTeach(entities: Record<string, unknown>): string {
     return "Tell me what to remember in the form: **\"Remember that <thing> is <fact>\"** — e.g. \"Remember that my favorite color is blue.\"";
   }
   teachFact(key, value);
+  addTaughtFact(key, value); // also record in the knowledge graph for multi-hop traversal
   return `✓ Got it — I'll remember that **${key}** is **${value}**. Ask me about it any time and I'll recall it.`;
 }
 
@@ -594,4 +607,95 @@ function handleFallback(lower: string, original: string): string {
   if (r !== null) return `= **${fmt(r)}**`;
 
   return `I didn't quite catch that. Try:\n- **Math**: "What is 15 * 7?"\n- **Date**: "What day is it?"\n- **Convert**: "Convert 100°F to Celsius"\n- **Help**: "What can you do?"`;
+}
+
+// ─── Comparative reasoning / goals / web / documents / code ───────────────────
+
+function handleComparativeTeach(text: string): string {
+  const learned = learnComparative(text.trim());
+  if (!learned) return "I couldn't parse that as a comparison. Try: **\"John is older than Sarah.\"**";
+  return `✓ Noted: **${learned.subject}** ${learned.relation.replace("_", " ")} **${learned.object}**. I can now reason about this transitively — ask me "who is oldest?" or "is X older than Y?".`;
+}
+
+function handleComparativeQuery(text: string, entities: Record<string, unknown>): string {
+  const superlative = entities.superlative as string | undefined;
+  if (superlative) {
+    const resolved = resolveSuperlativeWord(superlative);
+    if (!resolved) return `I don't know the comparison "${superlative}" yet. Teach me facts like **"X is ${superlative.replace(/est$/, "er")} than Y."**`;
+    const ranked = rankByRelation(resolved.relation);
+    if (ranked.length === 0) return `I don't have any facts about "${resolved.relation.replace("_", " ")}" yet. Tell me something like **"Alice is ${superlative.replace(/est$/, "er")} than Bob."**`;
+    return `Based on what I've been told:\n1. Ranking by **${resolved.relation.replace("_", " ")}**: ${ranked.join(" > ")}\n2. So the **${superlative}** is **${ranked[0]}**.`;
+  }
+
+  const a = entities.subjectA as string | undefined;
+  const b = entities.subjectB as string | undefined;
+  const comp = entities.comparative as string | undefined;
+  if (a && b && comp) {
+    const resolvedRel = resolveSuperlativeWord(comp + "est") ?? undefined;
+    const relation = resolvedRel?.relation ?? `${comp}_than`;
+    const related = isRelated(a, relation, b);
+    return related
+      ? `Step by step: I have (transitively) that **${a}** ${comp} than **${b}** — yes.`
+      : `I don't have facts establishing that **${a}** is ${comp} than **${b}** (or the reverse). Teach me with **"${a} is ${comp} than ${b}."**`;
+  }
+
+  return "Ask me things like **\"Who is oldest?\"** or **\"Is John older than Sarah?\"** once you've taught me some comparisons.";
+}
+
+function handleGoal(text: string, entities: Record<string, unknown>, sessionId: string): string {
+  const title = entities.goalTitle as string | undefined;
+  if (title) {
+    const stepParts = title.split(/,|\band\b/i).map((s) => s.trim()).filter(Boolean);
+    const steps = stepParts.length > 1 ? stepParts : [title];
+    const goal = startGoal(sessionId, title, steps);
+    return `✓ Goal started.\n\n${formatGoal(goal)}\n\nSay **"complete step 1"** as you finish steps, or **"show my goal progress"** any time.`;
+  }
+
+  const stepNumber = entities.stepNumber as number | undefined;
+  if (stepNumber !== undefined) {
+    const goal = completeStep(sessionId, stepNumber - 1);
+    if (!goal) return "You don't have an active goal right now. Start one with **\"Start a goal to learn Spanish, practice daily, take a test\"**.";
+    return formatGoal(goal);
+  }
+
+  const active = getActiveGoal(sessionId);
+  if (active) return formatGoal(active);
+  return "You don't have an active goal. Start one with **\"Start a goal to <title>\"** — separate steps with commas or \"and\".";
+}
+
+async function handleWebResearch(entities: Record<string, unknown>): Promise<string> {
+  const topic = entities.topic as string | undefined;
+  if (!topic) return "Tell me what to look up, e.g. **\"Search the web for the Eiffel Tower\"**.";
+  const result = await lookupTopic(topic);
+  if (!result) return `I couldn't fetch anything for **"${topic}"** right now (no internet reachable or no matching page). I've still got my local knowledge and whatever you teach me.`;
+  return `Here's what I found online about **"${topic}"**:\n\n${formatWebResult(result)}`;
+}
+
+async function handleDocument(entities: Record<string, unknown>): Promise<string> {
+  const docPath = entities.docPath as string | undefined;
+  if (docPath) {
+    // indexDocumentFile resolves this relative to a sandboxed documents/
+    // directory and rejects any ".." or absolute-path escape attempt.
+    const result = indexDocumentFile(docPath);
+    if ("error" in result) return `Couldn't index that: ${result.error}`;
+    return `✓ Indexed **${result.docName}** into ${result.chunks} chunk${result.chunks !== 1 ? "s" : ""}. Ask me **"What does the document say about ..."** to query it.`;
+  }
+
+  const query = entities.docQuery as string | undefined;
+  const indexed = listIndexedDocuments();
+  if (indexed.length === 0) return `No documents indexed yet. Drop a .txt/.md file into ${DOCS_ROOT} and try **"Index document notes.md"**.`;
+  if (!query) return `I have ${indexed.length} document(s) indexed: ${indexed.join(", ")}. Ask **"What does the document say about <topic>"**.`;
+
+  const hits = searchDocuments(query, 3);
+  if (hits.length === 0) return `Nothing in the indexed documents (${indexed.join(", ")}) matches **"${query}"**.`;
+  return `From the indexed documents, most relevant passages for **"${query}"**:\n\n${hits.map((h, i) => `**${i + 1}. ${h.docName}** (chunk ${h.chunkIndex + 1})\n${h.content}`).join("\n\n")}`;
+}
+
+function handleCodeLookup(entities: Record<string, unknown>): string {
+  const name = entities.symbolName as string | undefined;
+  if (!name) return "Tell me which symbol to find, e.g. **\"Find function generateResponse\"**.";
+  const root = path.join(process.cwd(), "src");
+  const hits = findSymbol(name, root);
+  if (hits.length === 0) return `No symbol matching **"${name}"** found under the code index (scanned from ${root}).`;
+  return `Found ${hits.length} match${hits.length !== 1 ? "es" : ""} for **"${name}"**:\n\n${hits.slice(0, 8).map((h) => `• **${h.name}** (${h.kind}) — ${path.relative(process.cwd(), h.file)}:${h.line}\n  \`${h.signature}\``).join("\n")}`;
 }

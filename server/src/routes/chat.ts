@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { db, stmts, type ConversationRow } from "../db/index.js";
-import { detectIntent } from "../nlp/intent-detector.js";
-import { generateResponse, clearSession } from "../nlp/response-generator.js";
+import { stmts, type ConversationRow } from "../db/index.js";
+import { clearSession } from "../nlp/response-generator.js";
+import { runPipeline } from "../core/pipeline.js";
 
 const router = Router();
 
@@ -17,7 +17,7 @@ function rowToMessage(row: ConversationRow) {
 }
 
 // POST /api/chat/message
-router.post("/message", (req, res) => {
+router.post("/message", async (req, res) => {
   const { text, sessionId = "default" } = req.body as { text?: string; sessionId?: string };
 
   if (!text || typeof text !== "string" || !text.trim()) {
@@ -25,25 +25,31 @@ router.post("/message", (req, res) => {
   }
 
   const trimmed = text.trim();
-  const detected = detectIntent(trimmed);
-  const responseText = generateResponse(trimmed, detected, sessionId);
 
-  stmts.insertMessage.run(sessionId, "user", trimmed, detected.intent, detected.confidence);
-  const userId = (stmts.lastInsertId.get() as { id: number }).id;
+  try {
+    const result = await runPipeline(trimmed, sessionId);
 
-  stmts.insertMessage.run(sessionId, "assistant", responseText, detected.intent, detected.confidence);
-  const asstId = (stmts.lastInsertId.get() as { id: number }).id;
+    stmts.insertMessage.run(sessionId, "user", trimmed, result.intent, result.confidence);
+    const userId = (stmts.lastInsertId.get() as { id: number }).id;
 
-  const userRow  = stmts.getById.get(userId)  as unknown as ConversationRow;
-  const asstRow  = stmts.getById.get(asstId)  as unknown as ConversationRow;
+    stmts.insertMessage.run(sessionId, "assistant", result.text, result.intent, result.confidence);
+    const asstId = (stmts.lastInsertId.get() as { id: number }).id;
 
-  res.json({
-    userMessage:      rowToMessage(userRow),
-    assistantMessage: rowToMessage(asstRow),
-    intent:     detected.intent,
-    confidence: detected.confidence,
-    entities:   detected.entities,
-  });
+    const userRow  = stmts.getById.get(userId)  as unknown as ConversationRow;
+    const asstRow  = stmts.getById.get(asstId)  as unknown as ConversationRow;
+
+    res.json({
+      userMessage:      rowToMessage(userRow),
+      assistantMessage: rowToMessage(asstRow),
+      intent:     result.intent,
+      confidence: result.confidence,
+      entities:   result.entities,
+      trace:      result.trace,
+    });
+  } catch (err) {
+    console.error("[chat] pipeline failed:", err instanceof Error ? err.message : err);
+    res.status(500).json({ error: "Something went wrong processing that message. Please try again." });
+  }
 });
 
 // GET /api/chat/history

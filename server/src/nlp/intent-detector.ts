@@ -234,6 +234,83 @@ const INTENT_PATTERNS: IntentPattern[] = [
     weight: 1.0,
   },
   {
+    intent: "comparative_teach",
+    patterns: [
+      /^[\w\s]+?\s+(?:is|are)\s+(?:older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|richer|heavier|lighter)\s+than\s+[\w\s]+/i,
+    ],
+    keywords: ["older than", "younger than", "taller than", "faster than", "bigger than"],
+    weight: 1.3,
+  },
+  {
+    intent: "comparative_query",
+    patterns: [
+      /who\s+is\s+(?:the\s+)?(?:oldest|youngest|tallest|shortest|fastest|slowest|biggest|smallest|strongest|richest|heaviest|lightest)/i,
+      /is\s+[\w\s]+?\s+(?:older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|richer|heavier|lighter)\s+than\s+[\w\s]+/i,
+    ],
+    keywords: ["who is oldest", "who is tallest", "who is fastest", "is older than", "is taller than"],
+    weight: 1.2,
+  },
+  {
+    intent: "goal",
+    patterns: [
+      /(?:start|create|set)\s+a\s+goal/i,
+      /^goal\s*:/i,
+      /(?:my\s+goal\s+is|help\s+me\s+plan)/i,
+      /(?:show|check|track)\s+(?:my\s+)?goal\s+progress/i,
+      /(?:mark|complete|finish)\s+step\s+\d+/i,
+    ],
+    keywords: ["start a goal", "my goal is", "goal progress", "complete step", "track my goal"],
+    weight: 1.2,
+  },
+  {
+    intent: "tools",
+    patterns: [
+      /(?:list|show)\s+(?:your\s+|available\s+)?tools/i,
+      /what\s+tools\s+do\s+you\s+have/i,
+    ],
+    keywords: ["list tools", "available tools", "what tools"],
+    weight: 1.2,
+  },
+  {
+    intent: "web_research",
+    patterns: [
+      /(?:search|look\s+up)\s+(?:the\s+)?(?:web|online|internet)\s+for\s+/i,
+      /(?:google|wikipedia)\s+/i,
+      /what\s+does\s+wikipedia\s+say\s+about\s+/i,
+    ],
+    keywords: ["search the web for", "look up online", "wikipedia says", "search online"],
+    weight: 1.3,
+  },
+  {
+    intent: "document",
+    patterns: [
+      /(?:index|read|learn)\s+(?:the\s+)?document\s+/i,
+      /what\s+does\s+the\s+document\s+say\s+about\s+/i,
+      /search\s+(?:my\s+)?documents?\s+for\s+/i,
+    ],
+    keywords: ["index document", "what does the document say", "search documents"],
+    weight: 1.3,
+  },
+  {
+    intent: "code_lookup",
+    patterns: [
+      /(?:find|look\s+up|where\s+is)\s+(?:the\s+)?(?:function|symbol|class)\s+/i,
+      /what\s+does\s+(?:the\s+)?function\s+\w+\s+do/i,
+    ],
+    keywords: ["find function", "where is function", "find symbol", "what does function"],
+    weight: 1.3,
+  },
+  {
+    intent: "trace",
+    patterns: [
+      /how\s+did\s+you\s+(?:get|arrive\s+at|come\s+up\s+with)\s+that/i,
+      /show\s+(?:me\s+)?your\s+reasoning/i,
+      /explain\s+your\s+(?:answer|trace)/i,
+    ],
+    keywords: ["how did you get that", "show your reasoning", "explain your trace"],
+    weight: 1.2,
+  },
+  {
     intent: "general_knowledge",
     patterns: [
       /(?:capital\s+of|largest|smallest|tallest|highest|deepest)\s+\w+/i,
@@ -330,6 +407,43 @@ function extractEntities(text: string, intent: string): Record<string, unknown> 
   if (intent === "research") {
     const m = text.match(/(?:research|look\s+into|dig\s+into|investigate|what\s+do\s+you\s+know\s+about|tell\s+me\s+everything(?:\s+you\s+know)?\s+about)\s+(.+)/i);
     if (m) entities.topic = m[1].replace(/[?!.]+$/,"").trim();
+  }
+
+  if (intent === "web_research") {
+    const m = text.match(/(?:search|look\s+up)\s+(?:the\s+)?(?:web|online|internet)\s+for\s+(.+)/i)
+      ?? text.match(/(?:google|wikipedia)\s+(.+)/i)
+      ?? text.match(/what\s+does\s+wikipedia\s+say\s+about\s+(.+)/i);
+    if (m) entities.topic = m[1].replace(/[?!.]+$/,"").trim();
+  }
+
+  if (intent === "document") {
+    const idxM = text.match(/(?:index|read|learn)\s+(?:the\s+)?document\s+(.+)/i);
+    if (idxM) entities.docPath = idxM[1].replace(/[?!.]+$/,"").trim();
+    const qM = text.match(/what\s+does\s+the\s+document\s+say\s+about\s+(.+)/i)
+      ?? text.match(/search\s+(?:my\s+)?documents?\s+for\s+(.+)/i);
+    if (qM) entities.docQuery = qM[1].replace(/[?!.]+$/,"").trim();
+  }
+
+  if (intent === "code_lookup") {
+    const m = text.match(/(?:find|look\s+up|where\s+is)\s+(?:the\s+)?(?:function|symbol|class)\s+(\w+)/i)
+      ?? text.match(/what\s+does\s+(?:the\s+)?function\s+(\w+)\s+do/i);
+    if (m) entities.symbolName = m[1].trim();
+  }
+
+  if (intent === "goal") {
+    const startM = text.match(/(?:start|create|set)\s+a\s+goal\s*(?:to\s+|:\s*)?(.+)/i)
+      ?? text.match(/(?:my\s+goal\s+is\s+to|help\s+me\s+plan)\s+(.+)/i)
+      ?? text.match(/^goal\s*:\s*(.+)/i);
+    if (startM) entities.goalTitle = startM[1].replace(/[?!.]+$/,"").trim();
+    const stepM = text.match(/(?:mark|complete|finish)\s+step\s+(\d+)/i);
+    if (stepM) entities.stepNumber = parseInt(stepM[1], 10);
+  }
+
+  if (intent === "comparative_query") {
+    const supM = lower.match(/who\s+is\s+(?:the\s+)?(\w+)/i);
+    if (supM) entities.superlative = supM[1];
+    const cmpM = text.match(/is\s+([\w\s]+?)\s+(older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|richer|heavier|lighter)\s+than\s+([\w\s]+?)[?.!]*$/i);
+    if (cmpM) { entities.subjectA = cmpM[1].trim(); entities.comparative = cmpM[2]; entities.subjectB = cmpM[3].trim(); }
   }
 
   return entities;
