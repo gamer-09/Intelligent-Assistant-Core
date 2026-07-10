@@ -94,11 +94,13 @@ Open the **Guide** tab in the app for the full interactive list. Quick overview:
 | **Date & Time** | `What time is it?` · `How many days until December 25?` |
 | **Unit Conversion** | `Convert 100°F to Celsius` · `5 km in miles` · `5 kg to pounds` |
 | **Text Analysis** | `Reverse 'hello'` · `Is 'racecar' a palindrome?` · `Count words in '...'` |
+| **Numbers** | `Tell me a fact about 42` · `Give me a random number fact` |
 | **Knowledge** | `Capital of Japan` · `Who invented the telephone?` · `What is an algorithm?` |
 | **Lists & Reminders** | `Add milk to my list` · `Remind me to call Alice` |
 | **Word Games** | `Spell 'necessary'` · `Scramble 'intelligent'` |
 | **Conversation** | `Tell me a joke` · `Who are you?` · `What can you do?` |
-| **Reasoning & Common Sense** | `What happens if I put ice in the sun?` · `Can an elephant fit inside a backpack?` · `What do a dog, a cat and a wolf have in common?` |
+| **Learning & Growth** | `Remember that my favorite color is blue` · `No, the correct answer is Paris` · `Why is recursion useful?` · `Challenge me` · `What do you know about Japan?` |
+| **Reasoning & Common Sense** | `What happens if I put ice in the sun?` · `Can an elephant fit inside a backpack?` · `What do a dog, a cat and a wolf have in common?` · `Sarah is older than John... John is older than Sarah` |
 
 ---
 
