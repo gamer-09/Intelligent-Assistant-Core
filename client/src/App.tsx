@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { MessageSquare, BookOpen } from "lucide-react";
+import { MessageSquare, BookOpen, Sparkles } from "lucide-react";
 import ChatPage from "./pages/Chat";
 import HelpPage from "./pages/Help";
+import GeminiChatPage from "./pages/GeminiChat";
 
-type Page = "chat" | "help";
+type Page = "chat" | "help" | "gemini";
 
 export default function App() {
   const [page, setPage] = useState<Page>("chat");
@@ -37,19 +38,27 @@ export default function App() {
             <BookOpen size={16} />
             Guide
           </button>
+          <button
+            className={`nav-link nav-link-gemini ${page === "gemini" ? "active" : ""}`}
+            onClick={() => setPage("gemini")}
+          >
+            <Sparkles size={16} />
+            Gemini
+          </button>
         </nav>
         <div className="sidebar-footer">
-          LOCAL LOGIC<br />
-          No external APIs
+          {page === "gemini" ? (
+            <>GEMINI TAB<br />Uses your API key — online</>
+          ) : (
+            <>LOCAL LOGIC<br />No external APIs</>
+          )}
         </div>
       </aside>
 
       <main className="main">
-        {page === "chat" ? (
-          <ChatPage prefill={prefill} onPrefillUsed={() => setPrefill("")} />
-        ) : (
-          <HelpPage onExampleClick={navigateToChat} />
-        )}
+        {page === "chat" && <ChatPage prefill={prefill} onPrefillUsed={() => setPrefill("")} />}
+        {page === "help" && <HelpPage onExampleClick={navigateToChat} />}
+        {page === "gemini" && <GeminiChatPage />}
       </main>
     </div>
   );

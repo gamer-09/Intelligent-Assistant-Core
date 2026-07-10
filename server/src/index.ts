@@ -5,6 +5,8 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import chatRouter from "./routes/chat.js";
 import assistantRouter from "./routes/assistant.js";
+import geminiRouter from "./routes/gemini.js";
+import { isGeminiConfigured } from "./core/geminiClient.js";
 import { seedKnowledgeGraph } from "./core/knowledgeGraph.js";
 import { buildSemanticIndex } from "./core/semantic.js";
 import { registerBuiltinTools } from "./core/registerTools.js";
@@ -66,6 +68,7 @@ loadPlugins().then((loaded) => {
 // API routes
 app.use("/api/chat", chatRouter);
 app.use("/api/assistant", assistantRouter);
+app.use("/api/gemini", geminiRouter);
 
 // Health check
 app.get("/api/healthz", (_req, res) => res.json({ status: "ok" }));
@@ -87,5 +90,6 @@ app.listen(PORT, () => {
   } else {
     console.log(`   Client: run "npm run dev:client" separately`);
   }
-  console.log(`   Mode:   self-contained NLP (no external APIs)\n`);
+  console.log(`   Mode:   self-contained NLP (no external APIs)`);
+  console.log(`   Gemini tab: ${isGeminiConfigured() ? "enabled (GEMINI_API_KEY set)" : "disabled — set GEMINI_API_KEY to enable"}\n`);
 });

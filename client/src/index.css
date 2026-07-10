@@ -18,6 +18,21 @@
 
 html, body, #root { height: 100%; }
 
+.nav-link-gemini { color: #f0abfc; }
+.nav-link-gemini.active { color: var(--bg); background: #d946ef; }
+
+.gemini-banner {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border: 1px solid #a21caf;
+  background: rgba(217, 70, 239, 0.12);
+  color: #f0abfc;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.gemini-stats-bar { border-bottom: 1px solid #a21caf; }
+
 body {
   font-family: var(--font-ui);
   background: var(--bg);
