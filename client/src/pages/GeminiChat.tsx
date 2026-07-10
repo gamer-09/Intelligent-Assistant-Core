@@ -131,7 +131,11 @@ export default function GeminiChatPage() {
   return (
     <>
       <div className="stats-bar gemini-stats-bar">
-        <span className="stat"><Sparkles size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />GEMINI TAB — ONLINE MODE</span>
+        <span className="stat">
+          <Sparkles size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+          GEMINI TAB —{" "}
+          {configured === null ? "CHECKING…" : (configured || apiKey) ? "ONLINE MODE" : "OFFLINE — NO KEY"}
+        </span>
         <span style={{ marginLeft: "auto" }}>
           SESS: <span className="stat-val" style={{ fontSize: 10 }}>{SESSION_ID.replace("gsession-", "")}</span>
         </span>

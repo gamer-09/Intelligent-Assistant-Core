@@ -172,6 +172,12 @@ body {
   animation: pulse 2s infinite;
 }
 
+.sidebar-online.status-checking { color: #facc15; }
+.sidebar-online.status-checking::before { background: #facc15; }
+
+.sidebar-online.status-offline { color: #f87171; }
+.sidebar-online.status-offline::before { background: #f87171; animation: none; }
+
 @keyframes pulse {
   0%,100% { opacity: 1; }
   50% { opacity: 0.5; }
