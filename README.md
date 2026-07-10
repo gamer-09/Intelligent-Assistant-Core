@@ -101,7 +101,7 @@ Open the **Guide** tab in the app for the full interactive list. Quick overview:
 | **Conversation** | `Tell me a joke` · `Who are you?` · `What can you do?` |
 | **Learning & Growth** | `Remember that my favorite color is blue` · `No, the correct answer is Paris` · `Why is recursion useful?` · `Challenge me` · `What do you know about Japan?` |
 | **Reasoning & Common Sense** | `What happens if I put ice in the sun?` · `Can an elephant fit inside a backpack?` · `What do a dog, a cat and a wolf have in common?` · `Sarah is older than John... John is older than Sarah` |
-| **System Access** *(opt-in, off by default)* | `System info` · `List files in reports` · `Read the file notes.txt` |
+| **System Access** | `System info` (always on, no file access) · `List files in reports` / `Read the file notes.txt` (opt-in, off until `ASSISTANT_FS_ROOT` is set) |
 
 ---
 

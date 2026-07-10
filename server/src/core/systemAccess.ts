@@ -17,7 +17,19 @@ import os from "os";
 const MAX_LIST_ENTRIES = 200;
 const MAX_READ_BYTES = 100_000; // 100 KB text cap
 
-const SENSITIVE_NAME_PATTERN = /^\.env(\..*)?$|\.(pem|key|ppk|p12|pfx|kdbx|ovpn)$|^id_rsa|credentials|\.git$/i;
+// Any dotfile (.env, .npmrc, .aws, .ssh, etc.) plus common key/credential
+// name and extension patterns. Deliberately broad — this is a denylist on
+// top of an already-confined, read-only root, not the only line of defense.
+const SENSITIVE_PATTERNS: RegExp[] = [
+  /^\./, // dotfiles/dot-directories, e.g. .env, .ssh, .aws, .git
+  /\.(pem|key|ppk|p12|pfx|pfxb|kdbx|ovpn|asc|gpg|jks|keystore)$/i,
+  /^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/i,
+  /(credential|secret|password|passwd|token|apikey|api_key)/i,
+];
+
+function isSensitiveName(name: string): boolean {
+  return SENSITIVE_PATTERNS.some((p) => p.test(name));
+}
 
 function getRoot(): string | null {
   const configured = process.env.ASSISTANT_FS_ROOT?.trim();
@@ -35,6 +47,11 @@ export function getConfiguredRoot(): string | null {
 
 type ResolveResult = { ok: true; resolved: string; root: string } | { ok: false; error: string };
 
+function withinRoot(candidate: string, root: string): boolean {
+  const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+  return candidate === root || candidate.startsWith(rootWithSep);
+}
+
 function resolveWithinRoot(userPath: string): ResolveResult {
   const root = getRoot();
   if (!root) {
@@ -46,12 +63,25 @@ function resolveWithinRoot(userPath: string): ResolveResult {
   if (!fs.existsSync(root)) {
     return { ok: false, error: `The configured folder does not exist: ${root}` };
   }
+  // Canonicalize the root itself in case it's a symlink.
+  const realRoot = fs.realpathSync(root);
+
   const cleaned = (userPath ?? "").trim() || ".";
   const resolved = path.resolve(root, cleaned);
-  const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
-  if (resolved !== root && !resolved.startsWith(rootWithSep)) {
+  if (!withinRoot(resolved, root)) {
     return { ok: false, error: `For safety, I can only look inside ${root}. That path would go outside it.` };
   }
+
+  // Lexical confinement above isn't enough on its own — a symlink *inside*
+  // the root could point outside it. Resolve symlinks and re-check the
+  // real path before allowing any stat/read/list to proceed.
+  if (fs.existsSync(resolved)) {
+    const realResolved = fs.realpathSync(resolved);
+    if (!withinRoot(realResolved, realRoot)) {
+      return { ok: false, error: `For safety, I can only look inside ${root}. That path resolves (via a symlink) outside it.` };
+    }
+  }
+
   return { ok: true, resolved, root };
 }
 
@@ -68,7 +98,9 @@ export function listDirectory(userPath: string): { entries: DirEntry[]; dir: str
   const stat = fs.statSync(r.resolved);
   if (!stat.isDirectory()) return { error: `Not a folder: ${userPath}. Did you mean to read it as a file?` };
 
-  const names = fs.readdirSync(r.resolved).slice(0, MAX_LIST_ENTRIES);
+  const names = fs.readdirSync(r.resolved)
+    .filter((name) => !isSensitiveName(name)) // keep likely secrets out of listings too
+    .slice(0, MAX_LIST_ENTRIES);
   const entries: DirEntry[] = names.map((name) => {
     const full = path.join(r.resolved, name);
     try {
@@ -89,7 +121,10 @@ export function readTextFile(userPath: string): { content: string; file: string;
   if (!r.ok) return { error: r.error };
   if (!fs.existsSync(r.resolved)) return { error: `Not found: ${userPath}` };
   const stat = fs.statSync(r.resolved);
-  if (!stat.isDirectory() && SENSITIVE_NAME_PATTERN.test(path.basename(r.resolved))) {
+  // Check every path segment relative to root, not just the basename, so
+  // e.g. ".ssh/config" is blocked even though "config" alone looks benign.
+  const relSegments = path.relative(r.root, r.resolved).split(path.sep);
+  if (!stat.isDirectory() && relSegments.some(isSensitiveName)) {
     return { error: "That file looks like it could hold credentials or keys, so I won't read it." };
   }
   if (stat.isDirectory()) return { error: `${userPath} is a folder, not a file. Try listing it instead.` };
