@@ -17,7 +17,7 @@
  */
 import { detectIntent, type DetectedIntent } from "../nlp/intent-detector.js";
 import { generateResponse } from "../nlp/response-generator.js";
-import { getContext } from "./contextManager.js";
+import { getContext, resolveReference, rememberTopic } from "./contextManager.js";
 import { splitCompoundRequest, stitchAnswers, type SubtaskResult } from "./planner.js";
 import { semanticMatch } from "./semantic.js";
 import { reflect } from "./reflection.js";
@@ -40,7 +40,19 @@ export function getLastTrace(sessionId: string): PipelineTraceStep[] {
   return lastTraceBySession.get(sessionId) ?? [];
 }
 
+// Below this, guessing produces noise more often than a useful answer —
+// asking a clarifying question is more honest and more useful than a
+// confident-sounding wrong guess (review: "does Yang know when it might be
+// wrong? can it ask clarifying questions?").
+const CLARIFY_THRESHOLD = 0.2;
+
 async function runSingle(text: string, sessionId: string, trace: PipelineTraceStep[], contextSummary: string, tavilyApiKey?: string): Promise<{ detected: DetectedIntent; answer: string }> {
+  const ref = resolveReference(sessionId, text);
+  if (ref.resolved) {
+    trace.push({ stage: "reference", detail: `bare follow-up "${text}" resolved to last topic "${ref.topic}"` });
+    text = ref.text;
+  }
+
   let detected = detectIntent(text);
   trace.push({ stage: "nlu", detail: `regex intent="${detected.intent}" confidence=${detected.confidence.toFixed(2)}` });
 
@@ -66,6 +78,9 @@ async function runSingle(text: string, sessionId: string, trace: PipelineTraceSt
   let raw: string;
   if (detected.intent === "trace") {
     raw = formatTrace(lastTraceBySession.get(sessionId) ?? []);
+  } else if (detected.confidence < CLARIFY_THRESHOLD && detected.intent !== "general_knowledge" && detected.intent !== "small_talk") {
+    trace.push({ stage: "clarify", detail: `confidence ${detected.confidence.toFixed(2)} below ${CLARIFY_THRESHOLD} — asking instead of guessing` });
+    raw = `I'm not confident I understood that (confidence ${(detected.confidence * 100).toFixed(0)}%). Could you rephrase, or tell me more specifically what you're trying to do? For example: a math expression, a fact to remember, or a question about something I might know.`;
   } else {
     raw = await generateResponse(text, detected, sessionId, tavilyApiKey);
   }
@@ -73,6 +88,15 @@ async function runSingle(text: string, sessionId: string, trace: PipelineTraceSt
 
   const reflected = reflect(text, raw);
   if (reflected.flagged) trace.push({ stage: "reflection", detail: reflected.note ?? "flagged" });
+
+  // Remember a concrete "topic" for reference resolution on the *next* turn —
+  // prefer an explicit entity if one was extracted, otherwise fall back to
+  // the raw text itself so "why?" / "continue" have something to latch onto.
+  const topicCandidate = (detected.entities.factKey as string | undefined)
+    ?? (detected.entities.targetText as string | undefined)
+    ?? (detected.entities.topic as string | undefined)
+    ?? (detected.intent !== "trace" && detected.confidence >= CLARIFY_THRESHOLD ? text : undefined);
+  if (topicCandidate) rememberTopic(sessionId, topicCandidate);
 
   return { detected, answer: reflected.text };
 }

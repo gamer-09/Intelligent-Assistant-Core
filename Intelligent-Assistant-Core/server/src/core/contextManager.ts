@@ -28,6 +28,54 @@ function summarize(rows: ConversationRow[]): string {
     (intents.length ? ` Topics touched: ${intents.join(", ")}.` : "");
 }
 
+// ─── Reference resolution ("that", "it", "the second one", "continue") ─────────
+//
+// Review finding: Yang had no mechanism for resolving references at all —
+// short follow-ups relied entirely on the extractive summary being folded
+// into semantic matching, which only helps route to the right *intent*, not
+// resolve *what* "that"/"it" refers to. This tracks the last mentioned
+// subject/topic per session explicitly and substitutes bare pronoun-only
+// follow-ups with it before intent detection ever runs.
+const lastTopicBySession = new Map<string, string>();
+
+/** Record the most recent concrete subject discussed, so later pronouns can resolve to it. */
+export function rememberTopic(sessionId: string, topic: string): void {
+  const trimmed = topic.trim();
+  if (trimmed) lastTopicBySession.set(sessionId, trimmed);
+}
+
+export function getLastTopic(sessionId: string): string | undefined {
+  return lastTopicBySession.get(sessionId);
+}
+
+const BARE_REFERENCE_PATTERNS: RegExp[] = [
+  /^(?:what about )?(?:it|that|that one|this|this one)\??$/i,
+  /^(?:the )?(?:first|second|third|last|other) one\??$/i,
+  /^(?:do|say|try) (?:the )?same(?: thing)?\??$/i,
+  /^continue\.?$/i,
+  /^(?:go on|keep going)\.?$/i,
+  /^why(?:\s+is\s+that)?\??$/i,
+  /^why not\??$/i,
+];
+
+/**
+ * If `text` is a bare reference with no concrete subject of its own,
+ * substitute in the last remembered topic for this session so downstream
+ * intent detection has something concrete to work with. Returns the
+ * (possibly rewritten) text plus whether a substitution happened, so the
+ * caller can note it in the reasoning trace.
+ */
+export function resolveReference(sessionId: string, text: string): { text: string; resolved: boolean; topic?: string } {
+  const trimmed = text.trim();
+  const isBareReference = BARE_REFERENCE_PATTERNS.some((p) => p.test(trimmed));
+  if (!isBareReference) return { text, resolved: false };
+  const topic = lastTopicBySession.get(sessionId);
+  if (!topic) return { text, resolved: false };
+  if (/^why/i.test(trimmed)) return { text: `why ${topic}`, resolved: true, topic };
+  if (/^continue|^go on|^keep going/i.test(trimmed)) return { text: `continue ${topic}`, resolved: true, topic };
+  return { text: topic, resolved: true, topic };
+}
+
 export function getContext(sessionId: string): SessionContext {
   const total = (stmts.countBySession.get(sessionId) as { total: number }).total;
   if (total <= SUMMARIZE_THRESHOLD) {

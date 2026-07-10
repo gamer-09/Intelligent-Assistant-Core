@@ -9,7 +9,7 @@ import {
   normalizeQuery,
 } from "./memory.js";
 import { evaluateExpression } from "../core/mathParser.js";
-import { addTaughtFact, relationsFrom, relationsByType } from "../core/knowledgeGraph.js";
+import { addTaughtFact, relationsFrom, relationsByType, learnIsA, inferCategoryProperty, categoryChain } from "../core/knowledgeGraph.js";
 import { learnComparative, isRelated, rankByRelation, resolveSuperlativeWord } from "../core/reasoningChains.js";
 import { bestFactMatch } from "../core/memoryRanking.js";
 import { lookupTopic, formatWebResult } from "../core/webIntel.js";
@@ -183,6 +183,13 @@ export async function generateResponse(text: string, detected: DetectedIntent, s
     if (prior) return prior.correct_answer;
   }
 
+  // Transfer-learning question check: "do kiwis lay eggs?" / "does a shark
+  // lay eggs?" / "is a whale warm blooded?" — answered by walking the is-a
+  // chain against known category properties (see inferCategoryProperty),
+  // rather than requiring every individual fact to have been taught.
+  const transferAnswer = tryAnswerFromCategoryTransfer(lower);
+  if (transferAnswer) return transferAnswer;
+
   switch (intent) {
     case "teach": return handleTeach(entities);
     case "correct": return handleCorrect(entities, sessionId);
@@ -214,6 +221,41 @@ export async function generateResponse(text: string, detected: DetectedIntent, s
     case "code_lookup": return handleCodeLookup(entities);
     default: return await handleFallback(lower, text, tavilyApiKey);
   }
+}
+
+// ─── Category-transfer question answering ──────────────────────────────────────
+
+const PROPERTY_PHRASES: Array<{ pattern: RegExp; property: string }> = [
+  { pattern: /lay(?:s)?\s+eggs?/, property: "lays_eggs" },
+  { pattern: /\bfly\b|\bflies\b/, property: "can_fly" },
+  { pattern: /warm.?blooded/, property: "warm_blooded" },
+  { pattern: /feathers?/, property: "has_feathers" },
+  { pattern: /nurse|produce milk|milk\s+(?:their|its)\s+young/, property: "nurses_young" },
+  { pattern: /photosynthesi[sz]e/, property: "photosynthesizes" },
+  { pattern: /live\s+in\s+water|swim|underwater/, property: "lives_in" },
+  { pattern: /move\s+(?:on\s+its\s+own|by\s+itself)/, property: "can_move" },
+  { pattern: /how\s+many\s+legs/, property: "leg_count" },
+];
+
+/**
+ * Answers "do kiwis lay eggs?"-style questions via category-property
+ * inheritance (see `inferCategoryProperty`) instead of requiring the exact
+ * sentence to have been taught. Singularizes a trailing "s" heuristically
+ * ("kiwis" -> "kiwi") since taught entities are stored singular.
+ */
+function tryAnswerFromCategoryTransfer(lower: string): string | undefined {
+  const m = lower.match(/^(?:do|does|is|are|can)\s+(?:a\s+|an\s+|the\s+)?([a-z][a-z\s]*?)\s+(.+?)\??$/);
+  if (!m) return undefined;
+  let subject = m[1].trim();
+  const rest = m[2].trim();
+  const propertyHit = PROPERTY_PHRASES.find((p) => p.pattern.test(rest));
+  if (!propertyHit) return undefined;
+  if (subject.endsWith("s") && !subject.endsWith("ss")) subject = subject.slice(0, -1);
+  const chain = categoryChain(subject);
+  if (chain.length === 0) return undefined; // no known category membership — let normal handling take over
+  const inferred = inferCategoryProperty(subject, propertyHit.property);
+  if (!inferred) return undefined;
+  return `Based on **${subject}** being a kind of **${inferred.via}**: ${inferred.value}. (Inferred from category membership, not a directly taught fact.)`;
 }
 
 // ─── Internet lookup (Tavily) ──────────────────────────────────────────────────
@@ -394,10 +436,23 @@ function handleTeach(entities: Record<string, unknown>): string {
   }
   const { contradicted, previousValue } = teachFact(key, value);
   addTaughtFact(key, value); // also record in the knowledge graph for multi-hop traversal
-  if (contradicted) {
-    return `⚠️ You previously told me **${key}** is **${previousValue}** — I've updated it to **${value}**. Let me know if that was a mistake.`;
+
+  // Transfer learning: "kiwi is a bird" is category membership, not just a
+  // string fact — recording it as `is_a_kind_of` lets later questions like
+  // "do kiwis lay eggs?" be answered by inheritance instead of requiring
+  // that exact fact to be taught separately (see inferCategoryProperty).
+  const categoryM = value.match(/^(?:an?|the)\s+([a-z][a-z\s]*)$/i);
+  let transferNote = "";
+  if (categoryM) {
+    const category = categoryM[1].trim().toLowerCase();
+    learnIsA(key, category);
+    transferNote = ` I'll also treat **${key}** as a kind of **${category}**, so I can infer things ${category}s typically have without being told separately.`;
   }
-  return `✓ Got it — I'll remember that **${key}** is **${value}**. Ask me about it any time and I'll recall it.`;
+
+  if (contradicted) {
+    return `⚠️ You previously told me **${key}** is **${previousValue}** — I've updated it to **${value}**.${transferNote} Let me know if that was a mistake.`;
+  }
+  return `✓ Got it — I'll remember that **${key}** is **${value}**.${transferNote} Ask me about it any time and I'll recall it.`;
 }
 
 function handleCorrect(entities: Record<string, unknown>, sessionId: string): string {

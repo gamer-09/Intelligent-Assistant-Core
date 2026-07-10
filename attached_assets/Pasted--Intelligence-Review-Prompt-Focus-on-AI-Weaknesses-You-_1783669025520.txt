@@ -1,0 +1,428 @@
+# Intelligence Review Prompt (Focus on AI Weaknesses)
+
+You are reviewing an independent AI assistant called **Yang**.
+
+Yang is **not** intended to be an LLM and **must never depend on hosted AI APIs**.
+
+The assistant must remain completely independent while becoming increasingly intelligent through its own architecture.
+
+The project already contains:
+
+* NLP
+* intent detection
+* memory
+* corrections
+* reasoning
+* research
+* quizzes
+* persistence
+* web access
+* modular architecture
+
+Do **not** criticize it for not using GPT or Claude.
+
+Instead, evaluate whether it behaves like an intelligent assistant.
+
+---
+
+# Primary Objective
+
+Ignore how much code exists.
+
+Ignore how many features exist.
+
+Evaluate one thing:
+
+> **Can Yang think like an intelligent assistant?**
+
+If the answer is "no", explain exactly why.
+
+---
+
+# Review Intelligence, Not Features
+
+A system can have 100 features and still fail basic reasoning.
+
+Focus on intelligence rather than capability count.
+
+---
+
+# 1. Generalization
+
+Can Yang solve problems it has never explicitly been programmed for?
+
+Or does it simply recognize patterns it already knows?
+
+Determine whether the assistant generalizes knowledge or memorizes rules.
+
+---
+
+# 2. Novel Questions
+
+Ask yourself:
+
+If the user phrases a question in a completely new way...
+
+Can Yang still understand it?
+
+Or does it fail because no intent matches?
+
+Measure robustness against unseen phrasing.
+
+---
+
+# 3. Reasoning Depth
+
+Determine whether Yang actually reasons or merely chains together stored facts.
+
+Look for evidence of:
+
+* inference
+* deduction
+* analogy
+* abstraction
+* synthesis
+
+If reasoning is mostly scripted, explain why.
+
+---
+
+# 4. Common Sense
+
+Evaluate whether Yang possesses common-sense reasoning.
+
+Examples:
+
+"If I put ice in the sun, what happens?"
+
+"If I drop a glass, why might it break?"
+
+"Can an elephant fit inside a backpack?"
+
+If these require manually written rules, explain why this architecture will not scale.
+
+---
+
+# 5. Context Awareness
+
+Can Yang understand references like:
+
+"What about the second one?"
+
+"Do the same thing."
+
+"Continue."
+
+"Why?"
+
+"That one."
+
+Can it resolve pronouns and references naturally?
+
+If not, identify the missing context mechanisms.
+
+---
+
+# 6. Flexible Conversation
+
+Does Yang converse naturally?
+
+Or does every conversation eventually expose deterministic branching?
+
+Look for:
+
+* repetitive wording
+* rigid responses
+* inability to improvise
+* inability to recover
+
+---
+
+# 7. Multi-Step Thinking
+
+Evaluate tasks such as:
+
+"Find all PDF files modified this week, summarize them, then remind me tomorrow."
+
+Can Yang:
+
+* decompose the task
+* plan
+* execute
+* recover from failure
+* verify completion
+
+If not, explain which architectural layer is missing.
+
+---
+
+# 8. Memory Intelligence
+
+Determine whether memory is merely storage.
+
+Or whether memories influence reasoning.
+
+Can Yang:
+
+* combine memories
+* compare memories
+* resolve contradictions
+* infer new knowledge
+
+If not, explain why memory alone is insufficient.
+
+---
+
+# 9. Learning Quality
+
+When Yang learns something...
+
+Does it merely store another sentence?
+
+Or does it actually improve its understanding?
+
+Distinguish between:
+
+knowledge storage
+
+vs
+
+knowledge acquisition.
+
+---
+
+# 10. World Model
+
+Does Yang possess an internal model of the world?
+
+Can it reason about:
+
+space
+
+time
+
+cause
+
+effect
+
+objects
+
+relationships
+
+events
+
+If not, explain what is missing.
+
+---
+
+# 11. Concept Formation
+
+Can Yang discover categories?
+
+Example:
+
+Dog
+
+Cat
+
+Wolf
+
+↓
+
+Animal
+
+Or must every relationship be manually programmed?
+
+Evaluate conceptual abstraction.
+
+---
+
+# 12. Transfer Learning
+
+Suppose Yang learns:
+
+"A kiwi is a bird."
+
+Later:
+
+"Do kiwis lay eggs?"
+
+Can it infer the answer?
+
+Or does it require another stored fact?
+
+Review transfer of knowledge.
+
+---
+
+# 13. Goal-Oriented Behaviour
+
+Can Yang pursue long-running goals?
+
+Can it:
+
+remember unfinished work
+
+resume later
+
+change strategy
+
+adapt to failure
+
+If not, identify missing planning architecture.
+
+---
+
+# 14. Uncertainty
+
+Does Yang know when it might be wrong?
+
+Can it express confidence?
+
+Can it refuse to answer?
+
+Can it ask clarifying questions?
+
+Or does it confidently produce weak answers?
+
+---
+
+# 15. Self-Criticism
+
+Can Yang critique its own reasoning?
+
+Can it detect contradictions?
+
+Can it revise conclusions?
+
+Can it notice logical inconsistencies?
+
+Evaluate reflective reasoning.
+
+---
+
+# 16. Autonomous Thinking
+
+Outside direct user commands,
+
+can Yang:
+
+notice patterns
+
+detect anomalies
+
+suggest improvements
+
+identify missing knowledge
+
+propose follow-up actions
+
+If not, explain what prevents autonomy.
+
+---
+
+# 17. Knowledge Integration
+
+When information comes from:
+
+memory
+
+web
+
+built-in knowledge
+
+user corrections
+
+Can Yang merge them into one coherent understanding?
+
+Or are they treated independently?
+
+---
+
+# 18. Robustness
+
+Attempt to break Yang.
+
+Try:
+
+* vague requests
+* ambiguous wording
+* indirect questions
+* incomplete information
+* contradictory statements
+* nested reasoning
+* follow-up questions
+* long conversations
+
+Document every failure.
+
+---
+
+# 19. Human Expectations
+
+Evaluate whether Yang behaves like users expect an AI assistant to behave.
+
+Examples:
+
+Users naturally expect:
+
+* remembering context
+* asking clarifying questions
+* adapting
+* inferring intent
+* filling gaps
+* making reasonable assumptions
+* understanding paraphrases
+* connecting ideas
+
+List every expectation Yang currently fails to meet.
+
+---
+
+# 20. Fundamental Intelligence Gaps
+
+Do **not** list missing features.
+
+Instead identify the deeper missing cognitive abilities.
+
+Examples:
+
+* abstraction
+* analogy
+* planning
+* uncertainty
+* self-reflection
+* causal reasoning
+* conceptual reasoning
+* semantic understanding
+* transfer learning
+* world modelling
+* contextual inference
+* adaptive learning
+* metacognition
+
+Explain which of these are absent, partially implemented, or fully implemented.
+
+---
+
+# Output Format
+
+Do not be polite.
+
+Assume this project aims to become one of the best fully independent AI assistants ever created.
+
+Identify every place where Yang behaves more like a sophisticated chatbot than an intelligent reasoning system.
+
+For every criticism include:
+
+* Severity
+* Technical explanation
+* Why users notice it
+* Architectural cause
+* Suggested redesign
+* Estimated implementation complexity
+* Expected improvement
+
+Prioritize cognitive weaknesses over feature requests.
+
+Judge the assistant by **how intelligently it behaves**, not by how many commands it supports.
