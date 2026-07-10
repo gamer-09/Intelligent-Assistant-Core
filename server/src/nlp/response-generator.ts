@@ -13,6 +13,7 @@ import { addTaughtFact, relationsFrom, relationsByType } from "../core/knowledge
 import { learnComparative, isRelated, rankByRelation, resolveSuperlativeWord } from "../core/reasoningChains.js";
 import { bestFactMatch } from "../core/memoryRanking.js";
 import { lookupTopic, formatWebResult } from "../core/webIntel.js";
+import { searchTavily, formatTavilyResult } from "../core/tavily.js";
 import { indexDocumentFile, searchDocuments, listIndexedDocuments, DOCS_ROOT } from "../core/docIntel.js";
 import { findSymbol } from "../core/codeIntel.js";
 import { startGoal, getActiveGoal, completeStep, formatGoal } from "../core/goals.js";
@@ -168,7 +169,7 @@ const JOKES = [
 
 // ─── Main generator ───────────────────────────────────────────────────────────
 
-export async function generateResponse(text: string, detected: DetectedIntent, sessionId: string): Promise<string> {
+export async function generateResponse(text: string, detected: DetectedIntent, sessionId: string, tavilyApiKey?: string): Promise<string> {
   const { intent, entities } = detected;
   const lower = text.toLowerCase().trim();
   const nums = entities.numbers as number[] | undefined;
@@ -187,31 +188,43 @@ export async function generateResponse(text: string, detected: DetectedIntent, s
     case "correct": return handleCorrect(entities, sessionId);
     case "reasoning": return handleReasoning(text, lower);
     case "challenge": return handleChallenge(text, lower, sessionId);
-    case "research": return handleResearch(entities, lower);
+    case "research": return await handleResearch(entities, lower, tavilyApiKey);
     case "greeting": return ["Hello! I'm your Intelligent Assistant. What can I help you with?","Hey there! Ready to assist — what's on your mind?","Hi! Type 'what can you do?' to see everything I can help with."][Math.floor(Math.random()*3)];
     case "farewell": return ["Goodbye! Come back anytime.","See you later! I'll be here when you need me.","Take care!"][Math.floor(Math.random()*3)];
     case "joke": return "Here's one:\n\n" + JOKES[Math.floor(Math.random() * JOKES.length)];
-    case "help": return "I can help with:\n\n🔢 **Math** — arithmetic, primes, Fibonacci, trig, logs\n🕐 **Date & Time** — current date/time, days until a date\n🔄 **Conversions** — temperature, distance, weight\n📝 **Text Analysis** — word count, reverse, palindromes\n🌍 **Knowledge** — countries, capitals, inventions, definitions\n📋 **Lists & Reminders** — session-based\n😄 **Jokes** — always ready\n\nVisit the **Guide** page for the full list with examples!";
+    case "help": return "I can help with:\n\n🔢 **Math** — arithmetic, primes, Fibonacci, trig, logs\n🕐 **Date & Time** — current date/time, days until a date\n🔄 **Conversions** — temperature, distance, weight\n📝 **Text Analysis** — word count, reverse, palindromes\n🌍 **Knowledge** — countries, capitals, inventions, definitions\n📋 **Lists & Reminders** — session-based\n😄 **Jokes** — always ready\n🔎 **Internet lookup** — paste a Tavily API key in the box above to let me search the live web for anything I don't already know\n\nVisit the **Guide** page for the full list with examples!";
     case "datetime": return handleDatetime(lower);
     case "math": return handleMath(text, lower, entities, nums, a, b);
     case "conversion": return handleConversion(text, lower, nums);
     case "text_analysis": return handleTextAnalysis(text, lower, entities);
     case "small_talk": return handleSmallTalk(lower);
-    case "weather": return "I don't have real-time weather data — I'm fully self-contained with no internet access.\n\nI *can* convert temperatures though: try **\"Convert 72°F to Celsius\"**.";
+    case "weather": return tavilyApiKey ? await handleTavilySearch(text, tavilyApiKey) : "I don't have real-time weather data locally.\n\nPaste a Tavily API key in the box above the chat to let me search the live web for current weather — or I *can* convert temperatures: try **\"Convert 72°F to Celsius\"**.";
     case "reminder": return handleReminder(text, entities, sessionId);
     case "list": return handleList(text, lower, sessionId);
-    case "definition": return handleDefinition(lower);
-    case "general_knowledge": return handleKnowledge(lower, nums);
+    case "definition": return await handleDefinition(lower, tavilyApiKey);
+    case "general_knowledge": return await handleKnowledge(lower, nums, tavilyApiKey);
     case "number_fact": return handleNumberFact(nums);
     case "word_game": return handleWordGame(lower);
     case "comparative_teach": return handleComparativeTeach(text);
     case "comparative_query": return handleComparativeQuery(text, entities);
     case "goal": return handleGoal(text, entities, sessionId);
     case "tools": return `Here's my current tool registry:\n\n${formatToolList()}`;
-    case "web_research": return await handleWebResearch(entities);
+    case "web_research": return await handleWebResearch(entities, tavilyApiKey);
     case "document": return await handleDocument(entities);
     case "code_lookup": return handleCodeLookup(entities);
-    default: return handleFallback(lower, text);
+    default: return await handleFallback(lower, text, tavilyApiKey);
+  }
+}
+
+// ─── Internet lookup (Tavily) ──────────────────────────────────────────────────
+
+async function handleTavilySearch(topic: string, apiKey: string): Promise<string> {
+  try {
+    const result = await searchTavily(topic, apiKey);
+    if (!result) return `I couldn't find anything on the web for **"${topic}"**.`;
+    return `Here's what I found searching the live web for **"${topic}"**:\n\n${formatTavilyResult(topic, result)}`;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Something went wrong reaching Tavily.";
   }
 }
 
@@ -364,8 +377,8 @@ function handleTextAnalysis(text: string, lower: string, entities: Record<string
 }
 
 function handleSmallTalk(lower: string): string {
-  if (/your\s+name|who\s+are\s+you|what\s+are\s+you/i.test(lower)) return "I'm the **Intelligent Assistant Core (IAC)** — you can also call me **Yang**. I'm a self-contained AI with no external APIs; every response comes from built-in logic that I keep growing.";
-  if (/are\s+you\s+(?:an?\s+)?(?:ai|bot|robot)/i.test(lower)) return "Yes, I'm an AI — Yang, also known as the Intelligent Assistant Core. I run entirely on local logic: no cloud, no external APIs, no Ollama.";
+  if (/your\s+name|who\s+are\s+you|what\s+are\s+you/i.test(lower)) return "I'm the **Intelligent Assistant Core (IAC)** — you can also call me **Yang**. Every response comes from built-in local logic that I keep growing; if you paste a Tavily API key above the chat, I can also search the live web when I don't already know something.";
+  if (/are\s+you\s+(?:an?\s+)?(?:ai|bot|robot)/i.test(lower)) return "Yes, I'm an AI — Yang, also known as the Intelligent Assistant Core. I run mostly on local logic, no cloud LLM required — but I can optionally search the live web via Tavily if you paste an API key above the chat.";
   if (/how\s+are\s+you/i.test(lower)) return "All systems operational! How can I help you?";
   if (/do\s+you\s+(?:feel|think|dream)/i.test(lower)) return "I don't experience feelings, but I'm designed to reason, learn from corrections, and respond as helpfully as possible.";
   return "I'm Yang — the Intelligent Assistant Core. Fully self-contained, and I get better the more you teach me. Try some math, convert units, teach me a fact, or say 'what can you do?' for the full list!";
@@ -464,7 +477,7 @@ function handleChallenge(text: string, lower: string, sessionId: string): string
   return `Here's a problem: **${picked.q}** = ?\n\nReply with just the number, and I'll check it.`;
 }
 
-function handleResearch(entities: Record<string, unknown>, lower: string): string {
+async function handleResearch(entities: Record<string, unknown>, lower: string, tavilyApiKey?: string): Promise<string> {
   const topic = ((entities.topic as string | undefined) ?? "").toLowerCase();
   if (!topic) return "Tell me a topic to research, e.g. **\"What do you know about France?\"** or **\"Research recursion\"**.";
 
@@ -481,8 +494,10 @@ function handleResearch(entities: Record<string, unknown>, lower: string): strin
     return `Here's what I've gathered on **"${topic}"**:\n\n${findings.map(f => `• ${f}`).join("\n")}`;
   }
 
+  if (tavilyApiKey) return await handleTavilySearch(topic, tavilyApiKey);
+
   noteResearchGap(topic);
-  return `I don't have anything on **"${topic}"** across my knowledge or taught facts yet. I've logged it as a research gap — teach me with **"Remember that ${topic} is ..."** and I'll have it next time.`;
+  return `I don't have anything on **"${topic}"** across my knowledge or taught facts yet. I've logged it as a research gap — teach me with **"Remember that ${topic} is ..."**, or paste a Tavily API key above to let me search the live web.`;
 }
 
 function handleReminder(text: string, entities: Record<string, unknown>, sessionId: string): string {
@@ -512,18 +527,20 @@ function handleList(text: string, lower: string, sessionId: string): string {
   return list.length === 0 ? "Your list is empty. Add with: **\"Add apples to my list\"**" : `Your list:\n${list.map((i,idx) => `${idx+1}. ${i}`).join("\n")}`;
 }
 
-function handleDefinition(lower: string): string {
+async function handleDefinition(lower: string, tavilyApiKey?: string): Promise<string> {
   const taught = findFactMatch(lower);
   if (taught) return `**${taught.key}** is **${taught.value}** (you taught me this).`;
 
   for (const [key, def] of Object.entries(DEFINITIONS)) {
     if (lower.includes(key)) return def;
   }
-  noteResearchGap(lower.replace(/^(?:what\s+(?:is|does|are|means?)|define|explain)\s+/i,"").trim() || lower);
-  return `I have definitions for: ${Object.keys(DEFINITIONS).join(", ")}. Try: **"What is an algorithm?"** — or teach me one with **"Remember that X is Y"**.`;
+  const topic = lower.replace(/^(?:what\s+(?:is|does|are|means?)|define|explain)\s+/i,"").trim() || lower;
+  if (tavilyApiKey) return await handleTavilySearch(topic, tavilyApiKey);
+  noteResearchGap(topic);
+  return `I have definitions for: ${Object.keys(DEFINITIONS).join(", ")}. Try: **"What is an algorithm?"**, teach me one with **"Remember that X is Y"**, or paste a Tavily API key above to search the live web.`;
 }
 
-function handleKnowledge(lower: string, nums?: number[]): string {
+async function handleKnowledge(lower: string, nums?: number[], tavilyApiKey?: string): Promise<string> {
   const taught = findFactMatch(lower);
   if (taught) return `**${taught.key}** is **${taught.value}** (you taught me this).`;
 
@@ -534,19 +551,22 @@ function handleKnowledge(lower: string, nums?: number[]): string {
     const c = capM[1].toLowerCase();
     const cap = CAPITALS[c];
     if (cap) return `The capital of **${capM[1]}** is **${cap}**.`;
+    if (tavilyApiKey) return await handleTavilySearch(`capital of ${capM[1]}`, tavilyApiKey);
     noteResearchGap(`capital of ${c}`);
-    return `I don't have the capital of "${capM[1]}" — I know: ${Object.keys(CAPITALS).join(", ")}. Teach me with **"Remember that the capital of ${capM[1]} is ..."**`;
+    return `I don't have the capital of "${capM[1]}" — I know: ${Object.keys(CAPITALS).join(", ")}. Teach me with **"Remember that the capital of ${capM[1]} is ..."** or paste a Tavily API key above to search the web.`;
   }
 
   const invM = lower.match(/who\s+(?:invented|created|discovered|founded)\s+(.+?)(?:\?|$)/i);
   if (invM) {
     const thing = invM[1].trim().toLowerCase();
     for (const [k, v] of Object.entries(INVENTIONS)) { if (thing.includes(k)) return v; }
+    if (tavilyApiKey) return await handleTavilySearch(invM[1].trim(), tavilyApiKey);
     noteResearchGap(thing);
-    return `I don't have that yet — I've logged "${invM[1]}" to learn. Teach me with **"Remember that ${invM[1]} was invented by ..."**`;
+    return `I don't have that yet — I've logged "${invM[1]}" to learn. Teach me with **"Remember that ${invM[1]} was invented by ..."** or paste a Tavily API key above to search the web.`;
   }
 
-  return "I know about countries, capitals, inventions, and tech definitions — plus anything you've taught me. Try: **\"Capital of Japan\"**, **\"Who invented the telephone?\"**, **\"Tell me about France\"**.";
+  if (tavilyApiKey) return await handleTavilySearch(lower, tavilyApiKey);
+  return "I know about countries, capitals, inventions, and tech definitions — plus anything you've taught me. Try: **\"Capital of Japan\"**, **\"Who invented the telephone?\"**, **\"Tell me about France\"** — or paste a Tavily API key above to search the live web.";
 }
 
 function handleNumberFact(nums?: number[]): string {
@@ -599,14 +619,19 @@ function handleWordGame(lower: string): string {
   return "Word games:\n- **Spell**: \"How do you spell 'necessary'?\"\n- **Scramble**: \"Scramble 'intelligent'\"\n- **Reverse**: \"Reverse 'hello'\"\n- **Palindrome**: \"Is 'racecar' a palindrome?\"";
 }
 
-function handleFallback(lower: string, original: string): string {
+async function handleFallback(lower: string, original: string, tavilyApiKey?: string): Promise<string> {
   if (/thank(?:s|\s+you)/i.test(lower)) return "You're welcome! Anything else I can help with?";
   if (/(?:you'?re?\s+)?(?:amazing|awesome|great|well\s+done)/i.test(lower)) return "Thank you! What else can I do for you?";
 
   const r = safeMath(original.replace(/[^0-9+\-*/().% ]/g,""));
   if (r !== null) return `= **${fmt(r)}**`;
 
-  return `I didn't quite catch that. Try:\n- **Math**: "What is 15 * 7?"\n- **Date**: "What day is it?"\n- **Convert**: "Convert 100°F to Celsius"\n- **Help**: "What can you do?"`;
+  // Nothing local matched at all — if the user has given us a Tavily key,
+  // this is the best place to reach for the live web rather than just
+  // shrugging, since every built-in intent handler has already had its shot.
+  if (tavilyApiKey) return await handleTavilySearch(original, tavilyApiKey);
+
+  return `I didn't quite catch that. Try:\n- **Math**: "What is 15 * 7?"\n- **Date**: "What day is it?"\n- **Convert**: "Convert 100°F to Celsius"\n- **Help**: "What can you do?"\n- Paste a Tavily API key above the chat and I can search the live web for anything else.`;
 }
 
 // ─── Comparative reasoning / goals / web / documents / code ───────────────────
@@ -663,11 +688,17 @@ function handleGoal(text: string, entities: Record<string, unknown>, sessionId: 
   return "You don't have an active goal. Start one with **\"Start a goal to <title>\"** — separate steps with commas or \"and\".";
 }
 
-async function handleWebResearch(entities: Record<string, unknown>): Promise<string> {
+async function handleWebResearch(entities: Record<string, unknown>, tavilyApiKey?: string): Promise<string> {
   const topic = entities.topic as string | undefined;
   if (!topic) return "Tell me what to look up, e.g. **\"Search the web for the Eiffel Tower\"**.";
+
+  // Prefer Tavily when the user has supplied a key — it's a real search
+  // engine (multiple live sources + a synthesized answer), whereas the
+  // Wikipedia fallback only ever returns a single static summary page.
+  if (tavilyApiKey) return await handleTavilySearch(topic, tavilyApiKey);
+
   const result = await lookupTopic(topic);
-  if (!result) return `I couldn't fetch anything for **"${topic}"** right now (no internet reachable or no matching page). I've still got my local knowledge and whatever you teach me.`;
+  if (!result) return `I couldn't fetch anything for **"${topic}"** right now (no internet reachable or no matching page). Paste a Tavily API key above the chat for broader live-web search.`;
   return `Here's what I found online about **"${topic}"**:\n\n${formatWebResult(result)}`;
 }
 

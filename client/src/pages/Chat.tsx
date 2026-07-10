@@ -12,6 +12,12 @@ function getSessionId(): string {
 }
 
 const SESSION_ID = getSessionId();
+const TAVILY_KEY_STORAGE_KEY = "iac_tavily_api_key";
+
+function maskKey(key: string): string {
+  if (key.length <= 8) return "•".repeat(key.length);
+  return key.slice(0, 4) + "•".repeat(key.length - 8) + key.slice(-4);
+}
 
 interface ChatMessage {
   id: number;
@@ -60,8 +66,26 @@ export default function ChatPage({
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Stats>({ totalMessages: 0, topIntent: null });
   const [showConfirm, setShowConfirm] = useState(false);
+  const [tavilyKey, setTavilyKey] = useState(() => localStorage.getItem(TAVILY_KEY_STORAGE_KEY) ?? "");
+  const [tavilyKeyInput, setTavilyKeyInput] = useState("");
+  const [editingTavilyKey, setEditingTavilyKey] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function saveTavilyKey() {
+    const trimmed = tavilyKeyInput.trim();
+    if (!trimmed) return;
+    localStorage.setItem(TAVILY_KEY_STORAGE_KEY, trimmed);
+    setTavilyKey(trimmed);
+    setTavilyKeyInput("");
+    setEditingTavilyKey(false);
+  }
+
+  function clearTavilyKey() {
+    localStorage.removeItem(TAVILY_KEY_STORAGE_KEY);
+    setTavilyKey("");
+    setEditingTavilyKey(false);
+  }
 
   // Load history + stats on mount
   useEffect(() => {
@@ -109,7 +133,7 @@ export default function ChatPage({
       const res = await fetch(`${API}/chat/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: trimmed, sessionId: SESSION_ID }),
+        body: JSON.stringify({ text: trimmed, sessionId: SESSION_ID, tavilyApiKey: tavilyKey || undefined }),
       });
       const data = await res.json();
       setMessages(prev => [...prev, data.userMessage, data.assistantMessage]);
@@ -154,13 +178,40 @@ export default function ChatPage({
         </span>
       </div>
 
+      {/* Tavily internet lookup key box */}
+      <div className="gemini-key-box">
+        {editingTavilyKey ? (
+          <>
+            <input
+              type="password"
+              className="gemini-key-input"
+              placeholder="Paste your Tavily API key to enable internet lookup"
+              value={tavilyKeyInput}
+              onChange={e => setTavilyKeyInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") saveTavilyKey(); if (e.key === "Escape") setEditingTavilyKey(false); }}
+              autoFocus
+            />
+            <button className="gemini-key-save-btn" onClick={saveTavilyKey} disabled={!tavilyKeyInput.trim()}>Save</button>
+            {tavilyKey && <button className="gemini-key-cancel-btn" onClick={() => setEditingTavilyKey(false)}>Cancel</button>}
+          </>
+        ) : tavilyKey ? (
+          <>
+            <span className="gemini-key-saved">Internet lookup on via Tavily: <code>{maskKey(tavilyKey)}</code></span>
+            <button className="gemini-key-edit-btn" onClick={() => { setTavilyKeyInput(""); setEditingTavilyKey(true); }}>Change</button>
+            <button className="gemini-key-clear-btn" onClick={clearTavilyKey}>Remove</button>
+          </>
+        ) : (
+          <button className="gemini-key-edit-btn" onClick={() => setEditingTavilyKey(true)}>+ Add Tavily API key for internet lookup</button>
+        )}
+      </div>
+
       {/* Messages */}
       <div className="chat-area">
         {messages.length === 0 && !loading ? (
           <div className="empty-state">
             <div className="empty-icon">&gt;_</div>
             <h2>System Online</h2>
-            <p>I.A. CORE is ready. No external APIs — all processing is local. Input sequence required to begin.</p>
+            <p>I.A. CORE is ready. Processing is local by default — add a Tavily API key above for live internet lookup. Input sequence required to begin.</p>
             <div className="starter-grid">
               {STARTERS.map(s => (
                 <button key={s} className="starter-btn" onClick={() => send(s)}>{s}</button>

@@ -18,7 +18,7 @@ function rowToMessage(row: ConversationRow) {
 
 // POST /api/chat/message
 router.post("/message", async (req, res) => {
-  const { text, sessionId = "default" } = req.body as { text?: string; sessionId?: string };
+  const { text, sessionId = "default", tavilyApiKey } = req.body as { text?: string; sessionId?: string; tavilyApiKey?: string };
 
   if (!text || typeof text !== "string" || !text.trim()) {
     return res.status(400).json({ error: "Message text is required." });
@@ -27,7 +27,7 @@ router.post("/message", async (req, res) => {
   const trimmed = text.trim();
 
   try {
-    const result = await runPipeline(trimmed, sessionId);
+    const result = await runPipeline(trimmed, sessionId, typeof tavilyApiKey === "string" && tavilyApiKey.trim() ? tavilyApiKey.trim() : undefined);
 
     stmts.insertMessage.run(sessionId, "user", trimmed, result.intent, result.confidence);
     const userId = (stmts.lastInsertId.get() as { id: number }).id;

@@ -40,7 +40,7 @@ export function getLastTrace(sessionId: string): PipelineTraceStep[] {
   return lastTraceBySession.get(sessionId) ?? [];
 }
 
-async function runSingle(text: string, sessionId: string, trace: PipelineTraceStep[], contextSummary: string): Promise<{ detected: DetectedIntent; answer: string }> {
+async function runSingle(text: string, sessionId: string, trace: PipelineTraceStep[], contextSummary: string, tavilyApiKey?: string): Promise<{ detected: DetectedIntent; answer: string }> {
   let detected = detectIntent(text);
   trace.push({ stage: "nlu", detail: `regex intent="${detected.intent}" confidence=${detected.confidence.toFixed(2)}` });
 
@@ -67,7 +67,7 @@ async function runSingle(text: string, sessionId: string, trace: PipelineTraceSt
   if (detected.intent === "trace") {
     raw = formatTrace(lastTraceBySession.get(sessionId) ?? []);
   } else {
-    raw = await generateResponse(text, detected, sessionId);
+    raw = await generateResponse(text, detected, sessionId, tavilyApiKey);
   }
   trace.push({ stage: "generation", detail: `handler for intent="${detected.intent}" produced ${raw.length} chars` });
 
@@ -77,7 +77,7 @@ async function runSingle(text: string, sessionId: string, trace: PipelineTraceSt
   return { detected, answer: reflected.text };
 }
 
-export async function runPipeline(text: string, sessionId: string): Promise<PipelineResult> {
+export async function runPipeline(text: string, sessionId: string, tavilyApiKey?: string): Promise<PipelineResult> {
   const trace: PipelineTraceStep[] = [];
   const context = getContext(sessionId);
   trace.push({ stage: "context", detail: `${context.recent.length} recent turn(s) in window${context.summary ? "; older turns summarized" : ""}` });
@@ -91,7 +91,7 @@ export async function runPipeline(text: string, sessionId: string): Promise<Pipe
   const confidences: number[] = [];
 
   for (const subtask of subtasks) {
-    const { detected, answer } = await runSingle(subtask, sessionId, trace, context.summary);
+    const { detected, answer } = await runSingle(subtask, sessionId, trace, context.summary, tavilyApiKey);
     results.push({ subtask, answer });
     confidences.push(detected.confidence || 0.1);
     if (!primaryDetected) primaryDetected = detected;
