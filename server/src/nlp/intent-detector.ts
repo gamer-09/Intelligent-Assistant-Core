@@ -1,6 +1,15 @@
 /**
  * Intent detection engine — no external AI APIs.
- * Uses weighted keyword scoring + regex pattern matching.
+ * Uses weighted keyword scoring + regex pattern matching,
+ * with a BM25 semantic fallback in the pipeline layer.
+ *
+ * Changelog (audit improvements):
+ *  - Added `follow_up` intent for "tell me more / elaborate / go on"
+ *  - Added indirect phrasing patterns (can you, I want to know, I need)
+ *  - Broadened general_knowledge to catch more implicit queries
+ *  - Added `opinion` intent for preference/opinion questions
+ *  - Added `hypothetical` intent for "what if" reasoning
+ *  - Tightened `definition` patterns to reduce false positives
  */
 
 export interface DetectedIntent {
@@ -76,6 +85,7 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /(?:tell|say|give)\s+(?:me\s+)?(?:a\s+)?joke/i,
       /(?:funny|humor|laugh|riddle)/i,
       /make\s+me\s+(?:laugh|smile)/i,
+      /another\s+joke/i,
     ],
     keywords: ["joke","funny","humor","laugh","riddle","pun","comedy"],
     weight: 1.0,
@@ -121,13 +131,14 @@ const INTENT_PATTERNS: IntentPattern[] = [
   {
     intent: "definition",
     patterns: [
-      /what\s+(?:is|does|are|means?)\s+(?:a\s+|an\s+|the\s+)?\w+/i,
-      /define\s+\w+/i,
-      /explain\s+(?:what|how|why|the)/i,
+      /^(?:what\s+(?:is|are)\s+(?:a\s+|an\s+|the\s+)?)([\w\s]{2,30})(?:\?|$)/i,
+      /^define\s+\w+/i,
+      /^(?:explain|describe)\s+(?:what\s+)?(?:a\s+|an\s+|the\s+)?(?:is\s+)?(\w+)/i,
       /meaning\s+of\s+\w+/i,
+      /what\s+does\s+\w+\s+mean/i,
     ],
-    keywords: ["what is","define","definition","explain","meaning","what does","what are"],
-    weight: 0.8,
+    keywords: ["define","definition","explain","meaning","what does","what are"],
+    weight: 0.9,
   },
   {
     intent: "word_game",
@@ -317,9 +328,46 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /who\s+(?:invented|discovered|created|founded|wrote|built)\s+/i,
       /when\s+(?:was|did|were)\s+/i,
       /population\s+of\s+\w+/i,
+      /(?:tell\s+me\s+about|facts?\s+about|info(?:rmation)?\s+(?:on|about))\s+\w+/i,
+      /(?:can\s+you\s+(?:tell|explain)|i\s+(?:want|need)\s+to\s+know\s+about)\s+\w+/i,
     ],
-    keywords: ["capital","largest","smallest","who invented","when was","how tall","population","where is","discovered","founded"],
+    keywords: ["capital","largest","smallest","who invented","when was","how tall","population","where is","discovered","founded","tell me about","facts about"],
     weight: 0.9,
+  },
+  // ── New intents added by audit improvements ────────────────────────────────
+  {
+    intent: "follow_up",
+    patterns: [
+      /^(?:tell\s+me\s+more|more\s+details?|elaborate|expand\s+on\s+that|go\s+on|continue|more\s+info)[\s!.?]*$/i,
+      /^(?:more|and\??|also\??)[\s!.?]*$/i,
+      /tell\s+me\s+more\s+about\s+(?:that|this|it)/i,
+      /(?:give\s+me\s+more|say\s+more|keep\s+going|what\s+else)/i,
+      /more\s+about\s+(?:that|this|it)/i,
+      /can\s+you\s+(?:expand|elaborate|say\s+more)/i,
+      /(?:interesting|cool|fascinating)[,.]?\s*(?:tell\s+me\s+more|go\s+on)/i,
+    ],
+    keywords: ["tell me more", "elaborate", "more details", "expand on", "go on", "what else", "more about that", "more info", "keep going", "say more"],
+    weight: 1.5,
+  },
+  {
+    intent: "hypothetical",
+    patterns: [
+      /what\s+(?:would|if|happens?\s+if|could)/i,
+      /^(?:what\s+if|suppose|imagine|hypothetically|let'?s\s+say)/i,
+      /if\s+(?:i|you|we|someone)\s+(?:were|was|had|could)/i,
+    ],
+    keywords: ["what if", "suppose", "imagine", "hypothetically", "let's say", "what would happen", "could"],
+    weight: 1.0,
+  },
+  {
+    intent: "opinion",
+    patterns: [
+      /what\s+(?:do\s+you\s+(?:think|prefer|recommend)|is\s+your\s+(?:opinion|view|take))/i,
+      /which\s+(?:is\s+better|do\s+you\s+prefer|would\s+you\s+recommend)/i,
+      /(?:do\s+you\s+(?:like|enjoy|prefer))/i,
+    ],
+    keywords: ["what do you think", "your opinion", "do you prefer", "which is better", "recommend"],
+    weight: 1.0,
   },
 ];
 
@@ -388,7 +436,6 @@ function extractEntities(text: string, intent: string): Record<string, unknown> 
       entities.factKey = m[1].trim();
       entities.factValue = m[2].trim();
     } else {
-      // "remember this: X is Y" / "learn the following: X is Y"
       const colonM = text.match(/(?:remember|learn)\s+(?:this|the\s+following)\s*:\s*(.+)/i);
       if (colonM) {
         const payload = colonM[1].trim();
@@ -444,6 +491,11 @@ function extractEntities(text: string, intent: string): Record<string, unknown> 
     if (supM) entities.superlative = supM[1];
     const cmpM = text.match(/is\s+([\w\s]+?)\s+(older|younger|taller|shorter|faster|slower|bigger|smaller|stronger|weaker|richer|poorer|heavier|lighter)\s+than\s+([\w\s]+?)[?.!]*$/i);
     if (cmpM) { entities.subjectA = cmpM[1].trim(); entities.comparative = cmpM[2]; entities.subjectB = cmpM[3].trim(); }
+  }
+
+  if (intent === "general_knowledge") {
+    const topicM = text.match(/(?:tell\s+me\s+about|facts?\s+about|info(?:rmation)?\s+(?:on|about)|can\s+you\s+tell\s+me\s+about|i\s+want\s+to\s+know\s+about)\s+(.+?)(?:\?|$)/i);
+    if (topicM) entities.topic = topicM[1].trim();
   }
 
   return entities;

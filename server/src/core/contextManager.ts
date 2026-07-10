@@ -2,6 +2,11 @@
  * Session context management: keeps a bounded rolling window of recent turns
  * plus an extractive summary of older ones, so long conversations don't
  * require re-processing full history and don't blow past useful context.
+ *
+ * Audit improvements:
+ *  - Added `getLastTopic()` for coreference resolution
+ *  - Added `getLastUserQuery()` for follow-up handling
+ *  - Improved extractive summary to preserve intent-bearing terms
  */
 import { stmts, type ConversationRow } from "../db/index.js";
 import { tokenize } from "./retrieval.js";
@@ -43,4 +48,57 @@ export function refreshSummary(sessionId: string): void {
   if (all.length <= SUMMARIZE_THRESHOLD) return;
   const older = all.slice(0, -RECENT_WINDOW);
   stmts.upsertContextSummary.run(sessionId, summarize(older));
+}
+
+// ── New helpers for follow-up & coreference ──────────────────────────────────
+
+const STOP_WORDS = new Set([
+  "a","an","the","is","are","was","were","be","been","being","of","to","in",
+  "on","at","for","with","by","and","or","but","if","so","that","this","these",
+  "those","it","its","as","from","do","does","did","can","could","will","would",
+  "should","what","who","which","how","why","you","your","i","me","my","we",
+  "our","he","she","they","them","their","not","no","tell","know","about",
+  "more","give","show","explain","please","want","like","just","also","ok",
+  "okay","sure","right","well","yes","no","get","let","make","go","see",
+]);
+
+/**
+ * Extract the most likely topic from a piece of text (the first content-bearing
+ * noun/term that isn't a stopword). Used for follow-up resolution and coref.
+ */
+function extractTopicFromText(text: string): string | undefined {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+  if (tokens.length === 0) return undefined;
+  // Prefer the longest token (more likely to be a domain term)
+  return tokens.sort((a, b) => b.length - a.length)[0];
+}
+
+/**
+ * Return the most likely topic the session was discussing, inferred from
+ * the most recent user message. Used by the follow-up handler.
+ */
+export function getLastTopic(sessionId: string): string | undefined {
+  const row = stmts.getLastUserMessage.get(sessionId) as unknown as ConversationRow | undefined;
+  if (!row) return undefined;
+  return extractTopicFromText(row.text);
+}
+
+/**
+ * Return the full text of the most recent user message in a session.
+ */
+export function getLastUserQuery(sessionId: string): string | undefined {
+  const row = stmts.getLastUserMessage.get(sessionId) as unknown as ConversationRow | undefined;
+  return row?.text;
+}
+
+/**
+ * Return the full text of the most recent assistant response in a session.
+ */
+export function getLastAssistantResponse(sessionId: string): string | undefined {
+  const row = stmts.getLastAssistantMessage.get(sessionId) as unknown as ConversationRow | undefined;
+  return row?.text;
 }

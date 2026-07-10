@@ -51,11 +51,13 @@ export const CAPABILITIES: Capability[] = [
   { id: "convo-smalltalk", name: "About the Assistant", description: "Ask who or what the assistant is.", examples: ["Who are you?", "Are you an AI?", "What is your name?"], category: "Conversation" },
   { id: "convo-help", name: "Help", description: "Ask what the assistant can do.", examples: ["What can you do?", "Help", "Show me your features"], category: "Conversation" },
   // Learning & Growth
-  { id: "learn-teach", name: "Teach a Fact", description: "Teach the assistant a new fact it will remember and recall later.", examples: ["Remember that my favorite color is blue", "Learn that the office WiFi password is guest123"], category: "Learning & Growth" },
+  { id: "learn-teach", name: "Teach a Fact", description: "Teach the assistant a new fact it will remember and recall later. Detects contradictions with existing facts.", examples: ["Remember that my favorite color is blue", "Learn that the office WiFi password is guest123"], category: "Learning & Growth" },
   { id: "learn-correct", name: "Self-Correction", description: "Correct a wrong answer — it's remembered so the same mistake isn't repeated.", examples: ["That's wrong, actually it's 42", "No, the correct answer is Paris"], category: "Learning & Growth" },
   { id: "learn-reasoning", name: "Step-by-Step Reasoning", description: "Ask 'why' or 'how come' to get a step-by-step explanation from known facts.", examples: ["Why is recursion useful?", "Explain how encryption works"], category: "Learning & Growth" },
   { id: "learn-challenge", name: "Challenge Me", description: "Get a random problem to solve, with the answer checked and revealed.", examples: ["Challenge me", "Quiz me", "Give me a problem"], category: "Learning & Growth" },
   { id: "learn-research", name: "Research a Topic", description: "Gather everything known about a topic across built-in and taught knowledge; unknown topics are logged to learn later.", examples: ["Research recursion", "What do you know about Japan?"], category: "Learning & Growth" },
+  // Follow-up
+  { id: "followup-expand", name: "Follow-up / Expand", description: "Ask for more detail on the previous topic — Yang resolves the reference and fetches more.", examples: ["Tell me more", "Elaborate", "Go on", "More details", "What else?"], category: "Conversation" },
 ];
 
 export const CATEGORIES = [...new Set(CAPABILITIES.map(c => c.category))];
