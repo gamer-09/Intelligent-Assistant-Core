@@ -139,7 +139,7 @@ export default function SidebarSettings() {
                 if (e.key === "Enter") saveFsRoot();
                 if (e.key === "Escape") cancelEdit();
               }}
-              placeholder="e.g. C:\Users\you\Documents"
+              placeholder={"e.g. C:\\Users\\you\\Documents"}
               autoFocus
             />
             <div className="sb-fs-actions">

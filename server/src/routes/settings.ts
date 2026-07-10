@@ -1,9 +1,23 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const router = Router();
+
+// ── Localhost-only guard ────────────────────────────────────────────────────
+// /api/settings mutates ASSISTANT_FS_ROOT, a security-boundary setting.
+// Only requests arriving from the loopback interface are allowed.
+function localOnly(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.socket.remoteAddress ?? "";
+  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  if (!isLocal) {
+    res.status(403).json({ error: "Settings endpoint is only accessible from localhost." });
+    return;
+  }
+  next();
+}
+router.use(localOnly);
 
 // Resolve server/.env — one level above this file's compiled output (dist/routes/).
 // During dev (ts-node / tsx) __dirname is src/routes/, so go up two levels to reach server/.
@@ -33,17 +47,27 @@ function readEnvFile(): Record<string, string> {
   return map;
 }
 
-/** Write a single key into server/.env, preserving comments and other keys. */
+/** Write a single key into server/.env, preserving comments and other keys.
+ *
+ *  Handles quoted values by stripping surrounding quotes when matching a key,
+ *  and always writes the new value unquoted. Only updates the first occurrence
+ *  of the key so that duplicate entries don't accumulate.
+ */
 function writeEnvKey(key: string, value: string): void {
-  let content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, "utf-8") : "";
+  const content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, "utf-8") : "";
   const lines = content.split("\n");
   let found = false;
   const updated = lines.map((line) => {
+    // Preserve blank lines and comments exactly as-is.
     const trimmed = line.trim();
-    if (trimmed.startsWith("#") || !trimmed.includes("=")) return line;
-    const idx = trimmed.indexOf("=");
-    const k = trimmed.slice(0, idx).trim();
-    if (k === key) { found = true; return `${key}=${value}`; }
+    if (!trimmed || trimmed.startsWith("#")) return line;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) return line;
+    const k = trimmed.slice(0, eqIdx).trim();
+    if (k === key && !found) {
+      found = true;
+      return `${key}=${value}`;
+    }
     return line;
   });
   if (!found) updated.push(`${key}=${value}`);
@@ -66,11 +90,23 @@ router.post("/", (req, res) => {
     res.status(400).json({ error: "fsRoot must be a string" });
     return;
   }
+
+  // Reject control characters (including newlines and carriage returns) to
+  // prevent injecting extra keys into the .env file.
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(fsRoot)) {
+    res.status(400).json({ error: "fsRoot must not contain control characters or newlines." });
+    return;
+  }
+
   const trimmed = fsRoot.trim();
   writeEnvKey("ASSISTANT_FS_ROOT", trimmed);
   // Apply immediately to the running process so no restart is needed.
-  process.env.ASSISTANT_FS_ROOT = trimmed || undefined as unknown as string;
-  if (!trimmed) delete process.env.ASSISTANT_FS_ROOT;
+  if (trimmed) {
+    process.env.ASSISTANT_FS_ROOT = trimmed;
+  } else {
+    delete process.env.ASSISTANT_FS_ROOT;
+  }
   res.json({ ok: true, fsRoot: trimmed });
 });
 
