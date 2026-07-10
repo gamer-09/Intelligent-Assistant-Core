@@ -149,7 +149,7 @@ export default function SidebarSettings() {
             <div className="sb-fs-actions">
               <button
                 className="sb-btn-save"
-                onClick={saveFsRoot}
+                onClick={() => saveFsRoot()}
                 disabled={saveState === "saving"}
               >
                 {saveState === "saving" ? "Saving…" : "Save"}
