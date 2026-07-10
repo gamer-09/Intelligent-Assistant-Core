@@ -101,6 +101,7 @@ Open the **Guide** tab in the app for the full interactive list. Quick overview:
 | **Conversation** | `Tell me a joke` · `Who are you?` · `What can you do?` |
 | **Learning & Growth** | `Remember that my favorite color is blue` · `No, the correct answer is Paris` · `Why is recursion useful?` · `Challenge me` · `What do you know about Japan?` |
 | **Reasoning & Common Sense** | `What happens if I put ice in the sun?` · `Can an elephant fit inside a backpack?` · `What do a dog, a cat and a wolf have in common?` · `Sarah is older than John... John is older than Sarah` |
+| **System Access** *(opt-in, off by default)* | `System info` · `List files in reports` · `Read the file notes.txt` |
 
 ---
 
@@ -153,6 +154,7 @@ No machine learning, no embeddings, no external calls — pure deterministic log
 |---|---|---|
 | `PORT` | `3001` | Server port |
 | `GEMINI_API_KEY` | *(none)* | Optional server-wide default. Everything else works fully offline without it. |
+| `ASSISTANT_FS_ROOT` | *(none)* | Optional. Set to one folder path (e.g. `C:\Users\you\Documents`) to let the assistant list/read files there. Read-only, confined to that folder, disabled unless set. |
 
 You don't have to set `GEMINI_API_KEY` on the server at all — the **Gemini tab** in the app has a box to paste your own key directly in the browser. It's stored in `localStorage` and sent only with your own requests; it's never written to the server's `.env`.
 

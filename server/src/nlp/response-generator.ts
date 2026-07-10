@@ -19,6 +19,7 @@ import { indexDocumentFile, searchDocuments, listIndexedDocuments, DOCS_ROOT } f
 import { findSymbol } from "../core/codeIntel.js";
 import { startGoal, getActiveGoal, completeStep, formatGoal } from "../core/goals.js";
 import { formatToolList } from "../core/tools.js";
+import { getSystemInfo, formatSystemInfo, listDirectory, formatDirListing, readTextFile } from "../core/systemAccess.js";
 import path from "path";
 
 // Session-scoped in-memory state
@@ -220,6 +221,9 @@ export async function generateResponse(text: string, detected: DetectedIntent, s
     case "web_research": return await handleWebResearch(entities, tavilyApiKey);
     case "document": return await handleDocument(entities);
     case "code_lookup": return handleCodeLookup(entities);
+    case "system_info": return formatSystemInfo(getSystemInfo());
+    case "file_browse": return handleFileBrowse(entities);
+    case "file_read": return handleFileRead(entities);
     default: return await handleFallback(lower, text, tavilyApiKey);
   }
 }
@@ -830,4 +834,19 @@ function handleCodeLookup(entities: Record<string, unknown>): string {
   const hits = findSymbol(name, root);
   if (hits.length === 0) return `No symbol matching **"${name}"** found under the code index (scanned from ${root}).`;
   return `Found ${hits.length} match${hits.length !== 1 ? "es" : ""} for **"${name}"**:\n\n${hits.slice(0, 8).map((h) => `• **${h.name}** (${h.kind}) — ${path.relative(process.cwd(), h.file)}:${h.line}\n  \`${h.signature}\``).join("\n")}`;
+}
+
+function handleFileBrowse(entities: Record<string, unknown>): string {
+  const subPath = (entities.subPath as string | undefined) ?? "";
+  const result = listDirectory(subPath);
+  if ("error" in result) return result.error;
+  return formatDirListing(result.dir, result.entries);
+}
+
+function handleFileRead(entities: Record<string, unknown>): string {
+  const subPath = (entities.subPath as string | undefined) ?? "";
+  const result = readTextFile(subPath);
+  if ("error" in result) return result.error;
+  const note = result.truncated ? "\n\n_(truncated — file is larger than the read limit)_" : "";
+  return `**${result.file}**\n\n\`\`\`\n${result.content}\n\`\`\`${note}`;
 }

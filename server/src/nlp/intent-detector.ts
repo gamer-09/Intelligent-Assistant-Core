@@ -311,6 +311,37 @@ const INTENT_PATTERNS: IntentPattern[] = [
     weight: 1.2,
   },
   {
+    intent: "system_info",
+    patterns: [
+      /system\s+info(?:rmation)?/i,
+      /(?:what|how much)\s+(?:cpu|memory|ram|disk)\s+(?:usage|do\s+you\s+have|is\s+free)/i,
+      /what\s+(?:os|operating\s+system|machine)\s+are\s+you\s+running\s+on/i,
+      /(?:check|show)\s+(?:system|machine)\s+(?:stats|specs|uptime)/i,
+    ],
+    keywords: ["system info", "cpu", "memory usage", "ram", "operating system", "uptime", "machine specs"],
+    weight: 1.2,
+  },
+  {
+    intent: "file_browse",
+    patterns: [
+      /(?:list|show|browse)\s+(?:the\s+)?files?\s+in\s+(.+)/i,
+      /what(?:'s|\s+is)\s+in\s+(?:my\s+)?(?:folder|directory)\s*(.*)/i,
+      /(?:list|show)\s+(?:my\s+)?(?:folder|directory)\s*(.*)/i,
+    ],
+    keywords: ["list files", "browse folder", "show files", "list directory", "what's in my folder"],
+    weight: 1.3,
+  },
+  {
+    intent: "file_read",
+    patterns: [
+      /read\s+(?:the\s+)?file\s+(.+)/i,
+      /(?:show|open)\s+(?:me\s+)?(?:the\s+)?contents?\s+of\s+(?:the\s+file\s+)?(.+)/i,
+      /what(?:'s|\s+is)\s+(?:inside|in)\s+(?:the\s+file\s+)?(\S+\.\w+)/i,
+    ],
+    keywords: ["read file", "file contents", "open file", "show me the file"],
+    weight: 1.3,
+  },
+  {
     intent: "general_knowledge",
     patterns: [
       /(?:capital\s+of|largest|smallest|tallest|highest|deepest)\s+\w+/i,
@@ -437,6 +468,20 @@ function extractEntities(text: string, intent: string): Record<string, unknown> 
     if (startM) entities.goalTitle = startM[1].replace(/[?!.]+$/,"").trim();
     const stepM = text.match(/(?:mark|complete|finish)\s+step\s+(\d+)/i);
     if (stepM) entities.stepNumber = parseInt(stepM[1], 10);
+  }
+
+  if (intent === "file_browse") {
+    const m = text.match(/(?:list|show|browse)\s+(?:the\s+)?files?\s+in\s+(.+)/i)
+      ?? text.match(/what(?:'s|\s+is)\s+in\s+(?:my\s+)?(?:folder|directory)\s*(.*)/i)
+      ?? text.match(/(?:list|show)\s+(?:my\s+)?(?:folder|directory)\s*(.*)/i);
+    entities.subPath = m?.[1] ? m[1].replace(/[?!.]+$/, "").trim() : "";
+  }
+
+  if (intent === "file_read") {
+    const m = text.match(/read\s+(?:the\s+)?file\s+(.+)/i)
+      ?? text.match(/(?:show|open)\s+(?:me\s+)?(?:the\s+)?contents?\s+of\s+(?:the\s+file\s+)?(.+)/i)
+      ?? text.match(/what(?:'s|\s+is)\s+(?:inside|in)\s+(?:the\s+file\s+)?(\S+\.\w+)/i);
+    if (m) entities.subPath = m[1].replace(/[?!.]+$/, "").trim();
   }
 
   if (intent === "comparative_query") {

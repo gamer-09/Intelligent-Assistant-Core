@@ -9,6 +9,7 @@ import { registerTool } from "./tools.js";
 import { lookupTopic, formatWebResult } from "./webIntel.js";
 import { searchDocuments, listIndexedDocuments } from "./docIntel.js";
 import { findSymbol } from "./codeIntel.js";
+import { isSystemAccessEnabled, getConfiguredRoot } from "./systemAccess.js";
 import path from "path";
 
 export function registerBuiltinTools(): void {
@@ -79,6 +80,21 @@ export function registerBuiltinTools(): void {
     execute: (input) => {
       const hits = findSymbol(input, path.join(process.cwd(), "src"));
       return hits.length ? hits.map((h) => `${h.name} (${h.kind}) ${h.file}:${h.line}`).join("\n") : `No symbol "${input}" found.`;
+    },
+  });
+
+  registerTool({
+    name: "system_access",
+    description: "Read-only look at machine stats and one user-approved local folder (ASSISTANT_FS_ROOT). No writes, no deletes, no execution — ever.",
+    capabilities: ["system_info", "file_browse", "file_read"],
+    permission: "read",
+    inputs: "For file_browse/file_read: a relative path inside the approved folder. For system_info: no input.",
+    outputs: "System stats, a directory listing, or plain-text file contents.",
+    execute: (input, _context) => {
+      if (!isSystemAccessEnabled()) {
+        return "Local file access isn't enabled. Set ASSISTANT_FS_ROOT in server/.env to the one folder you want me to be able to look at, then restart the server.";
+      }
+      return `Configured root: ${getConfiguredRoot()}. Use the system_info/file_browse/file_read handlers for actual output.`;
     },
   });
 }
